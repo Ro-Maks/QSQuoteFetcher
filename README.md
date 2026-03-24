@@ -1,134 +1,67 @@
-# Questrade Price Fetcher (Python)
+# Questrade Price Fetcher
 
-A GitHub Copilot–assisted Python project for retrieving real-time security
-prices from the Questrade API.
+Real-time security prices from the Questrade API, with both CLI and GUI interfaces.
 
 ![Questrade Quote Fetcher GUI](docs/screenshot.png)
 
-## Target Securities
+## Securities
 
-| Symbol  | Name                                          | Exchange |
-|---------|-----------------------------------------------|----------|
-| MSFT    | Microsoft Corporation                         | NASDAQ   |
-| FIE.TO  | iShares Canadian Financial Monthly Income ETF | TSX      |
-| XEQT.TO | iShares Core Equity ETF Portfolio             | TSX      |
-
-> **Note:** TSX-listed securities require the `.TO` suffix in the Questrade API
-> (e.g. `FIE.TO` not `FIE`). This is already configured in `src/questrade/config.py`.
-
-## GitHub Copilot Customization Files
-
-| File | Type | Purpose |
-|------|------|---------|
-| `.github/copilot-instructions.md` | Always-on instructions | Project-wide rules for every Copilot session |
-| `AGENTS.md` | Agent instructions | Copilot CLI, Coding Agent, and multi-agent guidance |
-| `.github/instructions/api.instructions.md` | Path-specific | Rules for `src/questrade/api/` files |
-| `.github/instructions/python.instructions.md` | Path-specific | Python coding standards |
-| `.github/instructions/testing.instructions.md` | Path-specific | pytest patterns and rules |
-| `.github/prompts/fetch-quotes.prompt.md` | Reusable prompt | Trigger a full price-fetch workflow |
-| `.github/prompts/add-symbol.prompt.md` | Reusable prompt | Scaffold a new security symbol |
-| `.github/prompts/refresh-token.prompt.md` | Reusable prompt | Implement OAuth token refresh logic |
-| `.github/prompts/error-handling.prompt.md` | Reusable prompt | Generate typed exception hierarchy |
-| `.github/agents/questrade-agent.agent.md` | Custom agent | Autonomous end-to-end quote retrieval |
-| `.github/skills/questrade-api/SKILL.md` | Skill | Reusable Questrade API knowledge capsule |
+| Symbol    | Name                                          | Exchange |
+|-----------|-----------------------------------------------|----------|
+| MSFT      | Microsoft Corporation                         | NASDAQ   |
+| FIE.TO    | iShares Canadian Financial Monthly Income ETF | TSX      |
+| XEQT.TO   | iShares Core Equity ETF Portfolio             | TSX      |
 
 ## Setup
 
-### Option A — Virtual environment (recommended for all platforms)
-
 ```bash
-# macOS / Linux
 python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python -m questrade.main
 ```
 
-```powershell
-# Windows PowerShell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python -m questrade.main
-```
-
-```cmd
-:: Windows cmd
-python -m venv .venv
-.venv\Scripts\activate.bat
-pip install -r requirements.txt
-set PYTHONPATH=src
-python -m questrade.main
-```
-
-### Option B — No virtual environment (Windows quick-start)
-
-```powershell
-pip install httpx pydantic
-$env:PYTHONPATH = "src"
-python -m questrade.main
-```
-
-### Configure credentials
+| Shell      | Activate                        |
+|------------|---------------------------------|
+| bash       | `source .venv/bin/activate`     |
+| PowerShell | `.venv\Scripts\Activate.ps1`    |
+| cmd        | `.venv\Scripts\activate.bat`    |
 
 ```bash
-cp .env.example .env
-# Edit .env and add your QUESTRADE_REFRESH_TOKEN
+pip install -r requirements.txt
+cp .env.example .env   # then add your QUESTRADE_REFRESH_TOKEN
 ```
 
-## Running the Application
+## Usage
 
-| Command | Shell | Description |
-|---------|-------|-------------|
-| `python -m questrade.main` | All | Fetch live quotes in the terminal (CLI) |
-| `python -m questrade` | All | Same as above (CLI is the default) |
-| `python -m questrade --gui` | All | Launch the GUI window |
-| `python -m questrade.gui` | All | Launch the GUI window (direct) |
+| Command                        | Description                |
+|--------------------------------|----------------------------|
+| `python -m questrade.main`     | Fetch quotes (CLI)         |
+| `python -m questrade --gui`    | Launch GUI window          |
+
+The GUI includes a refresh button and an auto-refresh toggle (10s interval).
+
+## Development
 
 ```bash
-# macOS / Linux
-python -m questrade --gui
+pytest                   # Run tests
+pytest --cov=src         # Run with coverage
+ruff check src tests     # Lint
+mypy src                 # Type check
 ```
-
-```powershell
-# Windows PowerShell
-python -m questrade --gui
-```
-
-```cmd
-:: Windows cmd
-set PYTHONPATH=src
-python -m questrade --gui
-```
-
-> **GUI Mode:** The GUI displays quotes in a tkinter table with a refresh button.
-> No extra dependencies required — tkinter is included with Python.
-
-## Development Commands
-
-```bash
-pytest                               # Run all tests
-pytest --cov=src                     # Run with coverage
-ruff check src tests                 # Lint
-mypy src                             # Type check
-```
-
-## Troubleshooting
-
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `ModuleNotFoundError: No module named 'questrade'` | No venv, `PYTHONPATH` not set | Use `$env:PYTHONPATH = "src"` (PowerShell) or `PYTHONPATH=src` (bash) |
-| `ValidationError` on `bidPrice`/`askPrice` | Markets closed, API returns `None` | Already fixed — `bid_price`/`ask_price` are `float \| None` |
-| `SymbolNotFoundError` for FIE or XEQT | Missing `.TO` suffix | Use `FIE.TO` and `XEQT.TO` — configured in `config.py` |
-| `BackendUnavailable: setuptools.backends.legacy` | Python 3.14 pip issue | Already fixed in `pyproject.toml` |
 
 ## Authentication
 
-Questrade uses OAuth 2.0 with short-lived access tokens (30 min) and
-long-lived refresh tokens. Store your initial refresh token in `.env` —
-the application rotates it automatically after every successful refresh.
+Questrade uses OAuth 2.0 with short-lived access tokens (30 min) and long-lived refresh tokens. Store your initial refresh token in `.env` — the app rotates it automatically after each refresh.
+
+<details>
+<summary>Troubleshooting</summary>
+
+| Error | Fix |
+|-------|-----|
+| `ModuleNotFoundError: questrade` | Activate the venv, or set `PYTHONPATH=src` |
+| `ValidationError` on bid/ask | Markets are closed — `None` values are expected |
+| `SymbolNotFoundError` for TSX symbols | Use the `.TO` suffix (e.g. `FIE.TO`) |
+
+</details>
 
 ## Resources
 
-- [Questrade API Docs](https://www.questrade.com/api/documentation/getting-started)
-- [GitHub Copilot Custom Instructions](https://docs.github.com/en/copilot/customizing-copilot/adding-custom-instructions-for-github-copilot)
+- [Questrade API Documentation](https://www.questrade.com/api/documentation/getting-started)
