@@ -5,6 +5,7 @@ import ctypes
 import logging
 import threading
 import tkinter as tk
+from datetime import datetime, timezone
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, DISABLED, END, LEFT, NORMAL, RIGHT, X
@@ -40,6 +41,23 @@ def _fmt_volume(volume: int) -> str:
     if volume >= 1_000:
         return f"{volume / 1_000:.1f}K"
     return str(volume)
+
+
+def _fmt_time(iso_str: str) -> str:
+    """Convert ISO 8601 timestamp to readable local format."""
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        return dt.strftime("%b %d, %I:%M %p")
+    except (ValueError, TypeError):
+        return iso_str
+
+
+def _fmt_retrieved(dt: object) -> str:
+    """Format the retrieval datetime for the status bar."""
+    if isinstance(dt, datetime):
+        local = dt.astimezone()
+        return f"Retrieved: {local.strftime('%b %d, %I:%M:%S %p')}"
+    return f"Retrieved: {dt}"
 
 
 def _fmt_status(quote: Quote) -> str:
@@ -213,11 +231,11 @@ class QuoteApp(ttk.Window):
                 _fmt_price(quote.bid_price),
                 _fmt_price(quote.ask_price),
                 _fmt_volume(quote.volume),
-                quote.last_trade_time,
+                _fmt_time(quote.last_trade_time),
                 _fmt_status(quote),
             ), tags=(tag,))
 
-        self._time_label.configure(text=f"Retrieved: {retrieved_at}")
+        self._time_label.configure(text=_fmt_retrieved(retrieved_at))
         self._status_label.configure(text="OK", foreground="#2ecc71")
         self._refresh_btn.configure(state=NORMAL)
 
