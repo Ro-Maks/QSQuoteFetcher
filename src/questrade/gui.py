@@ -4,7 +4,7 @@ from __future__ import annotations
 import ctypes
 import threading
 import tkinter as tk
-from datetime import datetime
+from datetime import datetime, time as dt_time, timezone, timedelta
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, DISABLED, E, END, LEFT, NORMAL, RIGHT, W, X, Y
@@ -25,7 +25,8 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
-AUTO_REFRESH_INTERVAL = 10  # seconds
+REFRESH_INTERVALS = [5, 10, 15, 30, 60]
+DEFAULT_REFRESH_INTERVAL = 10
 
 # -- Color palette --
 CLR_BG_DARK = "#1a1d23"
@@ -101,6 +102,70 @@ def _fmt_status(quote: Quote) -> str:
     return "Real-Time"
 
 
+def _sort_key_for_column(quote: Quote, column: str) -> tuple[int, float | str]:
+    """Return a sortable key for the given column. None values sort last."""
+    _COL_MAP: dict[str, object] = {
+        "symbol": quote.symbol,
+        "last_price": quote.last_trade_price,
+        "change": _get_change_value(quote),
+        "bid": quote.bid_price,
+        "ask": quote.ask_price,
+        "volume": quote.volume,
+        "last_trade": quote.last_trade_time,
+        "status": 0 if quote.is_halted else (1 if quote.delay > 0 else 2),
+    }
+    val = _COL_MAP.get(column, quote.symbol)
+    if val is None:
+        return (1, 0.0)
+    if isinstance(val, str):
+        return (0, val)
+    return (0, float(val))
+
+
+_UTC_OFFSET_EST = timezone(timedelta(hours=-5))
+_UTC_OFFSET_EDT = timezone(timedelta(hours=-4))
+
+
+def _now_eastern() -> datetime:
+    """Return the current time in US Eastern, accounting for DST.
+
+    DST (EDT, UTC-4) runs from the second Sunday in March at 2 AM
+    to the first Sunday in November at 2 AM; otherwise EST (UTC-5).
+    """
+    utc_now = datetime.now(timezone.utc)
+    year = utc_now.year
+    # Second Sunday in March: find first day of March that is Sunday, then +7
+    mar1_wd = datetime(year, 3, 1).weekday()  # 0=Mon … 6=Sun
+    second_sun_mar = 8 + (6 - mar1_wd) % 7  # day-of-month
+    dst_start = datetime(year, 3, second_sun_mar, 7, tzinfo=timezone.utc)  # 2 AM EST = 7 AM UTC
+    # First Sunday in November
+    nov1_wd = datetime(year, 11, 1).weekday()
+    first_sun_nov = 1 + (6 - nov1_wd) % 7
+    dst_end = datetime(year, 11, first_sun_nov, 6, tzinfo=timezone.utc)  # 2 AM EDT = 6 AM UTC
+    tz = _UTC_OFFSET_EDT if dst_start <= utc_now < dst_end else _UTC_OFFSET_EST
+    return utc_now.astimezone(tz)
+
+
+def _get_market_status() -> tuple[str, str]:
+    """Return (display_text, style_name) for the current US market session."""
+    now = _now_eastern()
+
+    # Weekends
+    if now.weekday() >= 5:
+        return ("Market Closed", "Mkc.TLabel")
+
+    t = now.time()
+    if t < dt_time(4, 0):
+        return ("Market Closed", "Mkc.TLabel")
+    if t < dt_time(9, 30):
+        return ("Pre-Market", "Mkx.TLabel")
+    if t < dt_time(16, 0):
+        return ("Market Open", "Mko.TLabel")
+    if t < dt_time(20, 0):
+        return ("After-Hours", "Mkx.TLabel")
+    return ("Market Closed", "Mkc.TLabel")
+
+
 class QuoteApp(ttk.Window):
     """Main application window displaying live Questrade quotes."""
 
@@ -112,10 +177,20 @@ class QuoteApp(ttk.Window):
         self._countdown = 0
         self._countdown_timer_id: str | None = None
         self._quote_count = 0
+        self._refresh_interval: int = DEFAULT_REFRESH_INTERVAL
+        self._sort_column: str = "symbol"
+        self._sort_descending: bool = False
+        self._quotes: list[Quote] = []
+        self._retrieved_at: object = None
 
         self.configure(background=CLR_BG_DARK)
+        # Style combobox dropdown list for dark theme.
+        self.option_add("*TCombobox*Listbox.background", CLR_BG_CARD)
+        self.option_add("*TCombobox*Listbox.foreground", CLR_TEXT)
+        self.option_add("*TCombobox*Listbox.selectBackground", CLR_ACCENT)
         self._configure_styles()
         self._build_ui()
+        self._update_market_status()
         # Fetch quotes on startup.
         self.after(100, self._refresh_quotes)
 
@@ -144,6 +219,24 @@ class QuoteApp(ttk.Window):
             "Subtitle.TLabel",
             background=CLR_BG_HEADER,
             foreground=CLR_TEXT_DIM,
+            font=(FONT_FAMILY, 10),
+        )
+        style.configure(
+            "Mko.TLabel",
+            background=CLR_BG_HEADER,
+            foreground=CLR_GREEN,
+            font=(FONT_FAMILY, 10),
+        )
+        style.configure(
+            "Mkc.TLabel",
+            background=CLR_BG_HEADER,
+            foreground=CLR_TEXT_DIM,
+            font=(FONT_FAMILY, 10),
+        )
+        style.configure(
+            "Mkx.TLabel",
+            background=CLR_BG_HEADER,
+            foreground=CLR_ORANGE,
             font=(FONT_FAMILY, 10),
         )
         style.configure(
@@ -223,6 +316,13 @@ class QuoteApp(ttk.Window):
             foreground=[("selected", CLR_TEXT_BRIGHT)],
         )
 
+        style.configure(
+            "Intervallbl.TLabel",
+            background=CLR_BG_HEADER,
+            foreground=CLR_TEXT_DIM,
+            font=(FONT_FAMILY, 9),
+        )
+
         # Buttons
         style.configure(
             "Refresh.TButton",
@@ -257,6 +357,10 @@ class QuoteApp(ttk.Window):
         self._dot_label = ttk.Label(title_area, text="  \u2022 Connected", style="StatusDot.TLabel")
         self._dot_label.pack(side=LEFT, padx=(12, 0))
 
+        ttk.Label(title_area, text="  \u2022", style="Subtitle.TLabel").pack(side=LEFT)
+        self._market_status_label = ttk.Label(title_area, text="", style="Mkc.TLabel")
+        self._market_status_label.pack(side=LEFT, padx=(4, 0))
+
         btn_area = ttk.Frame(header, style="Header.TFrame")
         btn_area.pack(side=RIGHT)
 
@@ -286,6 +390,24 @@ class QuoteApp(ttk.Window):
         )
         self._refresh_btn.pack(side=RIGHT)
 
+        # Refresh interval selector
+        interval_frame = ttk.Frame(btn_area, style="Header.TFrame")
+        interval_frame.pack(side=RIGHT, padx=(0, 12))
+
+        ttk.Label(interval_frame, text="Interval:", style="Intervallbl.TLabel").pack(
+            side=LEFT, padx=(0, 4)
+        )
+        self._interval_var = tk.StringVar(value=f"{DEFAULT_REFRESH_INTERVAL}s")
+        self._interval_combo = ttk.Combobox(
+            interval_frame,
+            textvariable=self._interval_var,
+            values=[f"{v}s" for v in REFRESH_INTERVALS],
+            width=4,
+            state="readonly",
+        )
+        self._interval_combo.pack(side=LEFT)
+        self._interval_combo.bind("<<ComboboxSelected>>", self._on_interval_change)
+
         # --- Thin accent line under header ---
         accent_line = tk.Frame(self, background=CLR_ACCENT, height=2)
         accent_line.pack(fill=X)
@@ -303,7 +425,7 @@ class QuoteApp(ttk.Window):
             selectmode="browse",
         )
 
-        headings = {
+        self._headings = {
             "symbol": "SYMBOL",
             "last_price": "LAST PRICE",
             "change": "CHANGE",
@@ -311,6 +433,7 @@ class QuoteApp(ttk.Window):
             "ask": "ASK",
             "volume": "VOLUME",
             "last_trade": "LAST TRADE",
+            "status": "STATUS",
         }
         col_config = {
             "symbol":     {"width": 90,  "minwidth": 70,  "anchor": W},
@@ -322,7 +445,10 @@ class QuoteApp(ttk.Window):
             "last_trade": {"width": 160, "minwidth": 130, "anchor": tk.CENTER},
         }
         for col in columns:
-            self._tree.heading(col, text=headings[col])
+            self._tree.heading(
+                col, text=self._headings[col],
+                command=lambda c=col: self._on_sort(c),
+            )
             cfg = col_config[col]
             self._tree.column(col, width=cfg["width"], minwidth=cfg["minwidth"], anchor=cfg["anchor"])
 
@@ -344,7 +470,10 @@ class QuoteApp(ttk.Window):
             style="Custom.Treeview",
             selectmode="none",
         )
-        self._status_tree.heading("status", text="STATUS")
+        self._status_tree.heading(
+            "status", text="STATUS",
+            command=lambda: self._on_sort("status"),
+        )
         self._status_tree.column("status", width=100, minwidth=80, anchor=tk.CENTER)
 
         self._status_tree.tag_configure("realtime", foreground=CLR_TEXT_BRIGHT)
@@ -389,7 +518,7 @@ class QuoteApp(ttk.Window):
         self._progress = ttk.Progressbar(
             self,
             bootstyle="info",  # type: ignore[arg-type]
-            maximum=AUTO_REFRESH_INTERVAL,
+            maximum=self._refresh_interval,
             mode="determinate",
         )
         # Starts hidden; shown when auto-refresh is active.
@@ -410,7 +539,22 @@ class QuoteApp(ttk.Window):
         self._countdown_label = ttk.Label(status_frame, text="", style="Countdown.TLabel")
         self._countdown_label.pack(side=RIGHT, padx=(0, 16))
 
+    # --- Market status ---
+
+    def _update_market_status(self) -> None:
+        text, style = _get_market_status()
+        self._market_status_label.configure(text=text, style=style)
+        self.after(60_000, self._update_market_status)
+
     # --- Auto-refresh ---
+
+    def _on_interval_change(self, _event: tk.Event) -> None:  # type: ignore[type-arg]
+        self._refresh_interval = int(self._interval_var.get().rstrip("s"))
+        self._progress.configure(maximum=self._refresh_interval)
+        if self._auto_refresh_on:
+            self._cancel_countdown()
+            self._start_countdown()
+        self.focus_set()
 
     def _toggle_auto_refresh(self) -> None:
         self._auto_refresh_on = not self._auto_refresh_on
@@ -430,8 +574,8 @@ class QuoteApp(ttk.Window):
             self._progress.pack_forget()
 
     def _start_countdown(self) -> None:
-        self._countdown = AUTO_REFRESH_INTERVAL
-        self._progress.configure(value=AUTO_REFRESH_INTERVAL)
+        self._countdown = self._refresh_interval
+        self._progress.configure(value=self._refresh_interval)
         self._progress.pack(fill=X, padx=16, pady=(4, 0), before=self._get_separator())
         self._tick_countdown()
 
@@ -488,18 +632,50 @@ class QuoteApp(ttk.Window):
             self.after(0, self._on_fetch_error, f"Unexpected error: {exc}")
 
     def _on_fetch_complete(self, quotes: list[Quote], retrieved_at: object) -> None:
-        # Clear existing rows in both treeviews.
+        self._quotes = quotes
+        self._retrieved_at = retrieved_at
+        self._sort_and_display()
+
+        self._quote_count = len(quotes)
+        self._time_label.configure(
+            text=f"Last updated: {_fmt_retrieved(retrieved_at)}  \u2022  {self._quote_count} symbols"
+        )
+        if isinstance(retrieved_at, datetime):
+            self._updated_label.configure(text=retrieved_at.astimezone().strftime("%I:%M:%S %p"))
+        self._status_label.configure(text="\u2713 OK", style="StatusOk.TLabel")
+        self._refresh_btn.configure(state=NORMAL)
+        self._dot_label.configure(text="  \u2022 Connected", foreground=CLR_GREEN)
+
+    # --- Sorting ---
+
+    def _on_sort(self, column: str) -> None:
+        if column == self._sort_column:
+            self._sort_descending = not self._sort_descending
+        else:
+            self._sort_column = column
+            self._sort_descending = False
+        if self._quotes:
+            self._sort_and_display()
+
+    def _sort_and_display(self) -> None:
+        """Sort stored quotes and repopulate both treeviews."""
+        sorted_quotes = sorted(
+            self._quotes,
+            key=lambda q: _sort_key_for_column(q, self._sort_column),
+            reverse=self._sort_descending,
+        )
+
+        # Clear both treeviews.
         for item in self._tree.get_children():
             self._tree.delete(item)
         for item in self._status_tree.get_children():
             self._status_tree.delete(item)
 
-        for i, quote in enumerate(quotes):
+        for i, quote in enumerate(sorted_quotes):
             is_stripe = i % 2 == 1
             tags: list[str] = []
             status_tags: list[str] = []
 
-            # Status color (halted/delayed override row text color)
             if quote.is_halted:
                 tags = ["halted_stripe" if is_stripe else "halted"]
                 status_tags = ["halted_stripe" if is_stripe else "halted"]
@@ -507,7 +683,6 @@ class QuoteApp(ttk.Window):
                 tags = ["delayed_stripe" if is_stripe else "delayed"]
                 status_tags = ["delayed_stripe" if is_stripe else "delayed"]
             else:
-                # Change color for main data rows
                 change = _get_change_value(quote)
                 if change is not None and change > 0:
                     tags = ["change_up_stripe" if is_stripe else "change_up"]
@@ -515,7 +690,6 @@ class QuoteApp(ttk.Window):
                     tags = ["change_down_stripe" if is_stripe else "change_down"]
                 elif is_stripe:
                     tags = ["stripe"]
-                # Status is always green for real-time quotes
                 status_tags = ["realtime_stripe" if is_stripe else "realtime"]
 
             self._tree.insert("", END, values=(
@@ -532,15 +706,21 @@ class QuoteApp(ttk.Window):
                 _fmt_status(quote),
             ), tags=tuple(status_tags))
 
-        self._quote_count = len(quotes)
-        self._time_label.configure(
-            text=f"Last updated: {_fmt_retrieved(retrieved_at)}  \u2022  {self._quote_count} symbols"
-        )
-        if isinstance(retrieved_at, datetime):
-            self._updated_label.configure(text=retrieved_at.astimezone().strftime("%I:%M:%S %p"))
-        self._status_label.configure(text="\u2713 OK", style="StatusOk.TLabel")
-        self._refresh_btn.configure(state=NORMAL)
-        self._dot_label.configure(text="  \u2022 Connected", foreground=CLR_GREEN)
+        self._update_heading_text()
+
+    def _update_heading_text(self) -> None:
+        """Update column headings to show sort indicator on the active column."""
+        arrow = " \u25b2" if not self._sort_descending else " \u25bc"
+        for col in ("symbol", "last_price", "change", "bid", "ask", "volume", "last_trade"):
+            text = self._headings[col]
+            if col == self._sort_column:
+                text += arrow
+            self._tree.heading(col, text=text)
+
+        status_text = self._headings["status"]
+        if self._sort_column == "status":
+            status_text += arrow
+        self._status_tree.heading("status", text=status_text)
 
         # Restart countdown if auto-refresh is on.
         if self._auto_refresh_on:
