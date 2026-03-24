@@ -3,6 +3,8 @@
 A GitHub Copilot–assisted Python project for retrieving real-time security
 prices from the Questrade API.
 
+![Questrade Quote Fetcher GUI](docs/screenshot.png)
+
 ## Target Securities
 
 | Symbol  | Name                                          | Exchange |
