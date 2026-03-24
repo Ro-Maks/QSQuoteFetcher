@@ -4,10 +4,10 @@ from __future__ import annotations
 import ctypes
 import threading
 import tkinter as tk
-from datetime import datetime, timezone
+from datetime import datetime
 
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, DISABLED, END, LEFT, NORMAL, RIGHT, X, Y, BOTTOM, TOP, W, E
+from ttkbootstrap.constants import BOTH, DISABLED, E, END, LEFT, NORMAL, RIGHT, W, X, Y
 
 from questrade.main import fetch_all_quotes
 from questrade.models.errors import (
@@ -73,6 +73,26 @@ def _fmt_retrieved(dt: object) -> str:
     return str(dt)
 
 
+def _fmt_change(quote: Quote) -> str:
+    """Format daily price change as '+1.23 (+0.5%)' or '-1.23 (-0.5%)'."""
+    if quote.last_trade_price is None or quote.open_price is None:
+        return "---"
+    change = quote.last_trade_price - quote.open_price
+    if quote.open_price != 0:
+        pct = (change / quote.open_price) * 100
+    else:
+        pct = 0.0
+    sign = "+" if change >= 0 else ""
+    return f"{sign}{change:,.2f} ({sign}{pct:.2f}%)"
+
+
+def _get_change_value(quote: Quote) -> float | None:
+    """Return the raw price change, or None if unavailable."""
+    if quote.last_trade_price is None or quote.open_price is None:
+        return None
+    return quote.last_trade_price - quote.open_price
+
+
 def _fmt_status(quote: Quote) -> str:
     if quote.is_halted:
         return "HALTED"
@@ -86,8 +106,8 @@ class QuoteApp(ttk.Window):
 
     def __init__(self) -> None:
         super().__init__(title="Questrade Quote Fetcher", themename="darkly")
-        self.minsize(900, 400)
-        self.geometry("960x500")
+        self.minsize(960, 400)
+        self.geometry("1060x500")
         self._auto_refresh_on = False
         self._countdown = 0
         self._countdown_timer_id: str | None = None
@@ -254,7 +274,7 @@ class QuoteApp(ttk.Window):
         table_frame = ttk.Frame(self, style="Dark.TFrame", padding=(16, 12, 16, 0))
         table_frame.pack(fill=BOTH, expand=True)
 
-        columns = ("symbol", "last_price", "bid", "ask", "volume", "last_trade", "status")
+        columns = ("symbol", "last_price", "change", "bid", "ask", "volume", "last_trade", "status")
         self._tree = ttk.Treeview(
             table_frame,
             columns=columns,
@@ -266,6 +286,7 @@ class QuoteApp(ttk.Window):
         headings = {
             "symbol": "SYMBOL",
             "last_price": "LAST PRICE",
+            "change": "CHANGE",
             "bid": "BID",
             "ask": "ASK",
             "volume": "VOLUME",
@@ -273,13 +294,14 @@ class QuoteApp(ttk.Window):
             "status": "STATUS",
         }
         col_config = {
-            "symbol":     {"width": 100, "minwidth": 70,  "anchor": W},
-            "last_price": {"width": 110, "minwidth": 90,  "anchor": E},
-            "bid":        {"width": 100, "minwidth": 80,  "anchor": E},
-            "ask":        {"width": 100, "minwidth": 80,  "anchor": E},
-            "volume":     {"width": 100, "minwidth": 70,  "anchor": E},
-            "last_trade": {"width": 180, "minwidth": 140, "anchor": tk.CENTER},
-            "status":     {"width": 110, "minwidth": 90,  "anchor": tk.CENTER},
+            "symbol":     {"width": 90,  "minwidth": 70,  "anchor": W},
+            "last_price": {"width": 100, "minwidth": 90,  "anchor": E},
+            "change":     {"width": 140, "minwidth": 110, "anchor": E},
+            "bid":        {"width": 90,  "minwidth": 70,  "anchor": E},
+            "ask":        {"width": 90,  "minwidth": 70,  "anchor": E},
+            "volume":     {"width": 90,  "minwidth": 70,  "anchor": E},
+            "last_trade": {"width": 160, "minwidth": 130, "anchor": tk.CENTER},
+            "status":     {"width": 100, "minwidth": 80,  "anchor": tk.CENTER},
         }
         for col in columns:
             self._tree.heading(col, text=headings[col])
@@ -291,6 +313,10 @@ class QuoteApp(ttk.Window):
         self._tree.tag_configure("stripe", background=CLR_BG_ROW_ALT)
         self._tree.tag_configure("halted_stripe", foreground=CLR_RED, background=CLR_BG_ROW_ALT)
         self._tree.tag_configure("delayed_stripe", foreground=CLR_ORANGE, background=CLR_BG_ROW_ALT)
+        self._tree.tag_configure("change_up", foreground=CLR_GREEN)
+        self._tree.tag_configure("change_down", foreground=CLR_RED)
+        self._tree.tag_configure("change_up_stripe", foreground=CLR_GREEN, background=CLR_BG_ROW_ALT)
+        self._tree.tag_configure("change_down_stripe", foreground=CLR_RED, background=CLR_BG_ROW_ALT)
 
         # Scrollbar
         scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self._tree.yview)
@@ -408,27 +434,35 @@ class QuoteApp(ttk.Window):
 
         for i, quote in enumerate(quotes):
             is_stripe = i % 2 == 1
+            tags: list[str] = []
 
+            # Row background stripe
+            if is_stripe:
+                tags.append("stripe")
+
+            # Status color (halted/delayed override row text color)
             if quote.is_halted:
-                tag = "halted_stripe" if is_stripe else "halted"
+                tags = ["halted_stripe" if is_stripe else "halted"]
             elif quote.delay > 0:
-                tag = "delayed_stripe" if is_stripe else "delayed"
-            elif is_stripe:
-                tag = "stripe"
+                tags = ["delayed_stripe" if is_stripe else "delayed"]
             else:
-                tag = ""
-
-            status_text = _fmt_status(quote)
+                # Change color for normal rows
+                change = _get_change_value(quote)
+                if change is not None and change > 0:
+                    tags = ["change_up_stripe" if is_stripe else "change_up"]
+                elif change is not None and change < 0:
+                    tags = ["change_down_stripe" if is_stripe else "change_down"]
 
             self._tree.insert("", END, values=(
                 f"  {quote.symbol}",
                 _fmt_price(quote.last_trade_price),
+                _fmt_change(quote),
                 _fmt_price(quote.bid_price),
                 _fmt_price(quote.ask_price),
                 _fmt_volume(quote.volume),
                 _fmt_time(quote.last_trade_time),
-                status_text,
-            ), tags=(tag,) if tag else ())
+                _fmt_status(quote),
+            ), tags=tuple(tags) if tags else ())
 
         self._quote_count = len(quotes)
         self._time_label.configure(

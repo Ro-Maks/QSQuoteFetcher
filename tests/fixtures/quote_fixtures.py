@@ -43,6 +43,7 @@ def _mock_quote(
     last_trade_price: float | None = 100.00,
     bid_price: float | None = None,
     ask_price: float | None = None,
+    open_price: float | None = 98.50,
     delay: int = 0,
     is_halted: bool = False,
 ) -> dict:
@@ -58,6 +59,7 @@ def _mock_quote(
         "lastTradeTime": "2026-03-21T19:34:12.000000-04:00",
         "bidPrice": bid_price,
         "askPrice": ask_price,
+        "openPrice": open_price,
         "volume": 1_500_000,
         "delay": delay,
         "isHalted": is_halted,

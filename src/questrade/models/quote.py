@@ -23,6 +23,7 @@ class Quote(BaseModel):
     bid_price: float | None         = Field(alias="bidPrice")     # None outside market hours
     ask_price: float | None         = Field(alias="askPrice")     # None outside market hours
     volume: int
+    open_price: float | None        = Field(alias="openPrice", default=None)
     delay: int
     is_halted: bool                 = Field(alias="isHalted")
 
