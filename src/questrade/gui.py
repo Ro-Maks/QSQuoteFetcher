@@ -60,7 +60,7 @@ def _fmt_time(iso_str: str) -> str:
     """Convert ISO 8601 timestamp to readable local format."""
     try:
         dt = datetime.fromisoformat(iso_str)
-        return dt.strftime("%b %d, %I:%M %p")
+        return dt.strftime("%b %d, %I:%M:%S %p")
     except (ValueError, TypeError):
         return iso_str
 
@@ -151,6 +151,18 @@ class QuoteApp(ttk.Window):
             background=CLR_BG_HEADER,
             foreground=CLR_GREEN,
             font=(FONT_FAMILY, 10),
+        )
+        style.configure(
+            "Refreshlbl.TLabel",
+            background=CLR_BG_HEADER,
+            foreground=CLR_TEXT_DIM,
+            font=(FONT_FAMILY, 9),
+        )
+        style.configure(
+            "Refreshval.TLabel",
+            background=CLR_BG_HEADER,
+            foreground=CLR_TEXT,
+            font=(FONT_FAMILY, 9),
         )
         style.configure(
             "StatusBar.TLabel",
@@ -248,6 +260,14 @@ class QuoteApp(ttk.Window):
         btn_area = ttk.Frame(header, style="Header.TFrame")
         btn_area.pack(side=RIGHT)
 
+        # Last-updated display between title and buttons
+        updated_area = ttk.Frame(header, style="Header.TFrame")
+        updated_area.pack(side=RIGHT, padx=(0, 20))
+
+        ttk.Label(updated_area, text="Last Updated  ", style="Refreshlbl.TLabel").pack(side=LEFT)
+        self._updated_label = ttk.Label(updated_area, text="--:--:-- --", style="Refreshval.TLabel")
+        self._updated_label.pack(side=LEFT)
+
         self._auto_btn = ttk.Button(
             btn_area,
             text="\u21bb  Auto: OFF",
@@ -274,7 +294,7 @@ class QuoteApp(ttk.Window):
         table_frame = ttk.Frame(self, style="Dark.TFrame", padding=(16, 12, 16, 0))
         table_frame.pack(fill=BOTH, expand=True)
 
-        columns = ("symbol", "last_price", "change", "bid", "ask", "volume", "last_trade", "status")
+        columns = ("symbol", "last_price", "change", "bid", "ask", "volume", "last_trade")
         self._tree = ttk.Treeview(
             table_frame,
             columns=columns,
@@ -291,7 +311,6 @@ class QuoteApp(ttk.Window):
             "ask": "ASK",
             "volume": "VOLUME",
             "last_trade": "LAST TRADE",
-            "status": "STATUS",
         }
         col_config = {
             "symbol":     {"width": 90,  "minwidth": 70,  "anchor": W},
@@ -301,7 +320,6 @@ class QuoteApp(ttk.Window):
             "ask":        {"width": 90,  "minwidth": 70,  "anchor": E},
             "volume":     {"width": 90,  "minwidth": 70,  "anchor": E},
             "last_trade": {"width": 160, "minwidth": 130, "anchor": tk.CENTER},
-            "status":     {"width": 100, "minwidth": 80,  "anchor": tk.CENTER},
         }
         for col in columns:
             self._tree.heading(col, text=headings[col])
@@ -318,12 +336,54 @@ class QuoteApp(ttk.Window):
         self._tree.tag_configure("change_up_stripe", foreground=CLR_GREEN, background=CLR_BG_ROW_ALT)
         self._tree.tag_configure("change_down_stripe", foreground=CLR_RED, background=CLR_BG_ROW_ALT)
 
-        # Scrollbar
-        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self._tree.yview)
-        self._tree.configure(yscrollcommand=scrollbar.set)
+        # Separate status treeview for independent color control
+        self._status_tree = ttk.Treeview(
+            table_frame,
+            columns=("status",),
+            show="headings",
+            style="Custom.Treeview",
+            selectmode="none",
+        )
+        self._status_tree.heading("status", text="STATUS")
+        self._status_tree.column("status", width=100, minwidth=80, anchor=tk.CENTER)
 
-        self._tree.pack(side=LEFT, fill=BOTH, expand=True)
+        self._status_tree.tag_configure("realtime", foreground=CLR_TEXT_BRIGHT)
+        self._status_tree.tag_configure("realtime_stripe", foreground=CLR_TEXT_BRIGHT, background=CLR_BG_ROW_ALT)
+        self._status_tree.tag_configure("halted", foreground=CLR_RED)
+        self._status_tree.tag_configure("halted_stripe", foreground=CLR_RED, background=CLR_BG_ROW_ALT)
+        self._status_tree.tag_configure("delayed", foreground=CLR_ORANGE)
+        self._status_tree.tag_configure("delayed_stripe", foreground=CLR_ORANGE, background=CLR_BG_ROW_ALT)
+
+        # Scrollbar synced to both treeviews
+        def _sync_scroll(*args: str) -> None:
+            self._tree.yview(*args)
+            self._status_tree.yview(*args)
+
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=_sync_scroll)
+
+        def _on_main_scroll(*args: str) -> None:
+            scrollbar.set(*args)
+            self._status_tree.yview("moveto", args[0])
+
+        def _on_status_scroll(*args: str) -> None:
+            scrollbar.set(*args)
+            self._tree.yview("moveto", args[0])
+
+        self._tree.configure(yscrollcommand=_on_main_scroll)
+        self._status_tree.configure(yscrollcommand=_on_status_scroll)
+
+        def _on_mousewheel(event: tk.Event) -> str:  # type: ignore[type-arg]
+            delta = -1 * (event.delta // 120)
+            self._tree.yview_scroll(delta, "units")
+            self._status_tree.yview_scroll(delta, "units")
+            return "break"
+
+        self._tree.bind("<MouseWheel>", _on_mousewheel)
+        self._status_tree.bind("<MouseWheel>", _on_mousewheel)
+
         scrollbar.pack(side=RIGHT, fill=Y)
+        self._status_tree.pack(side=RIGHT, fill=Y)
+        self._tree.pack(side=LEFT, fill=BOTH, expand=True)
 
         # --- Countdown progress bar ---
         self._progress = ttk.Progressbar(
@@ -428,30 +488,35 @@ class QuoteApp(ttk.Window):
             self.after(0, self._on_fetch_error, f"Unexpected error: {exc}")
 
     def _on_fetch_complete(self, quotes: list[Quote], retrieved_at: object) -> None:
-        # Clear existing rows.
+        # Clear existing rows in both treeviews.
         for item in self._tree.get_children():
             self._tree.delete(item)
+        for item in self._status_tree.get_children():
+            self._status_tree.delete(item)
 
         for i, quote in enumerate(quotes):
             is_stripe = i % 2 == 1
             tags: list[str] = []
-
-            # Row background stripe
-            if is_stripe:
-                tags.append("stripe")
+            status_tags: list[str] = []
 
             # Status color (halted/delayed override row text color)
             if quote.is_halted:
                 tags = ["halted_stripe" if is_stripe else "halted"]
+                status_tags = ["halted_stripe" if is_stripe else "halted"]
             elif quote.delay > 0:
                 tags = ["delayed_stripe" if is_stripe else "delayed"]
+                status_tags = ["delayed_stripe" if is_stripe else "delayed"]
             else:
-                # Change color for normal rows
+                # Change color for main data rows
                 change = _get_change_value(quote)
                 if change is not None and change > 0:
                     tags = ["change_up_stripe" if is_stripe else "change_up"]
                 elif change is not None and change < 0:
                     tags = ["change_down_stripe" if is_stripe else "change_down"]
+                elif is_stripe:
+                    tags = ["stripe"]
+                # Status is always green for real-time quotes
+                status_tags = ["realtime_stripe" if is_stripe else "realtime"]
 
             self._tree.insert("", END, values=(
                 f"  {quote.symbol}",
@@ -461,13 +526,18 @@ class QuoteApp(ttk.Window):
                 _fmt_price(quote.ask_price),
                 _fmt_volume(quote.volume),
                 _fmt_time(quote.last_trade_time),
-                _fmt_status(quote),
             ), tags=tuple(tags) if tags else ())
+
+            self._status_tree.insert("", END, values=(
+                _fmt_status(quote),
+            ), tags=tuple(status_tags))
 
         self._quote_count = len(quotes)
         self._time_label.configure(
             text=f"Last updated: {_fmt_retrieved(retrieved_at)}  \u2022  {self._quote_count} symbols"
         )
+        if isinstance(retrieved_at, datetime):
+            self._updated_label.configure(text=retrieved_at.astimezone().strftime("%I:%M:%S %p"))
         self._status_label.configure(text="\u2713 OK", style="StatusOk.TLabel")
         self._refresh_btn.configure(state=NORMAL)
         self._dot_label.configure(text="  \u2022 Connected", foreground=CLR_GREEN)
