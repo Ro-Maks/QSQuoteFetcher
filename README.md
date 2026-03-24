@@ -1,16 +1,23 @@
-# Questrade Price Fetcher
+# Questrade Quote Fetcher
 
 Real-time security prices from the Questrade API, with both CLI and GUI interfaces.
 
 ![Questrade Quote Fetcher GUI](docs/screenshot.png)
 
-## Securities
+## Watchlist
 
-| Symbol    | Name                                          | Exchange |
-|-----------|-----------------------------------------------|----------|
-| MSFT      | Microsoft Corporation                         | NASDAQ   |
-| FIE.TO    | iShares Canadian Financial Monthly Income ETF | TSX      |
-| XEQT.TO   | iShares Core Equity ETF Portfolio             | TSX      |
+Edit `symbols.json` in the project root to add or remove securities:
+
+```json
+[
+  { "symbol": "AAPL",  "exchange": "NASDAQ", "name": "Apple Inc." },
+  { "symbol": "AMZN",  "exchange": "NASDAQ", "name": "Amazon.com Inc." },
+  { "symbol": "GOOGL", "exchange": "NASDAQ", "name": "Alphabet Inc." },
+  { "symbol": "MSFT",  "exchange": "NASDAQ", "name": "Microsoft Corporation" }
+]
+```
+
+For TSX-listed securities, add the `.TO` suffix (e.g. `FIE.TO`).
 
 ## Setup
 

@@ -5,6 +5,7 @@ Never call os.environ directly in other modules.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -96,11 +97,31 @@ def persist_env(key: str, value: str) -> None:
 
 # ---------------------------------------------------------------------------
 # Target securities configuration
-# To add a new symbol, use the /add-symbol Copilot prompt.
+# Edit symbols.json in the project root to manage your watchlist.
 # ---------------------------------------------------------------------------
 
-TARGET_SYMBOLS: list[SymbolConfig] = [
-    SymbolConfig(symbol="MSFT",  exchange="NASDAQ", name="Microsoft Corporation"),
-    SymbolConfig(symbol="FIE.TO", exchange="TSX",    name="iShares Canadian Financial Monthly Income ETF"),
-    SymbolConfig(symbol="XEQT.TO", exchange="TSX",    name="iShares Core Equity ETF Portfolio"),
-]
+_SYMBOLS_PATH = Path(__file__).parent.parent.parent / "symbols.json"
+
+
+def load_symbols() -> list[SymbolConfig]:
+    """Load target symbols from symbols.json.
+
+    Returns:
+        List of SymbolConfig objects.
+
+    Raises:
+        EnvironmentError: If symbols.json is missing or malformed.
+    """
+    if not _SYMBOLS_PATH.exists():
+        raise EnvironmentError(
+            f"symbols.json not found at {_SYMBOLS_PATH}. "
+            "Copy symbols.json.example or create one — see README."
+        )
+    try:
+        data = json.loads(_SYMBOLS_PATH.read_text(encoding="utf-8"))
+        return [SymbolConfig(**entry) for entry in data]
+    except (json.JSONDecodeError, TypeError, KeyError) as exc:
+        raise EnvironmentError(f"Invalid symbols.json: {exc}") from exc
+
+
+TARGET_SYMBOLS: list[SymbolConfig] = load_symbols()
