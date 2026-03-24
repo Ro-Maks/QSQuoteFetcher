@@ -21,6 +21,7 @@ from questrade.models.errors import (
     SymbolNotFoundError,
     TokenRefreshError,
 )
+from questrade.models.quote import Quote
 from questrade.utils.formatter import print_quote_table
 
 logging.basicConfig(
@@ -29,6 +30,20 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+
+def fetch_all_quotes() -> tuple[list[Quote], datetime]:
+    """Authenticate, resolve symbols, and fetch quotes.
+
+    Returns:
+        Tuple of (list of Quote objects, UTC datetime of retrieval).
+    """
+    tokens = get_initial_tokens()
+    client = build_client(tokens.access_token, tokens.api_server)
+    symbol_ids = resolve_all_symbol_ids(TARGET_SYMBOLS, client)
+    retrieved_at = datetime.now(tz=timezone.utc)
+    quotes = fetch_quotes(symbol_ids, client)
+    return quotes, retrieved_at
 
 
 def run() -> None:

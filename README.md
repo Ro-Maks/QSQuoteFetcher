@@ -50,6 +50,15 @@ pip install -r requirements.txt
 python -m questrade.main
 ```
 
+```cmd
+:: Windows cmd
+python -m venv .venv
+.venv\Scripts\activate.bat
+pip install -r requirements.txt
+set PYTHONPATH=src
+python -m questrade.main
+```
+
 ### Option B — No virtual environment (Windows quick-start)
 
 ```powershell
@@ -65,10 +74,37 @@ cp .env.example .env
 # Edit .env and add your QUESTRADE_REFRESH_TOKEN
 ```
 
-## Commands
+## Running the Application
+
+| Command | Shell | Description |
+|---------|-------|-------------|
+| `python -m questrade.main` | All | Fetch live quotes in the terminal (CLI) |
+| `python -m questrade` | All | Same as above (CLI is the default) |
+| `python -m questrade --gui` | All | Launch the GUI window |
+| `python -m questrade.gui` | All | Launch the GUI window (direct) |
 
 ```bash
-python -m questrade.main             # Fetch live quotes
+# macOS / Linux
+python -m questrade --gui
+```
+
+```powershell
+# Windows PowerShell
+python -m questrade --gui
+```
+
+```cmd
+:: Windows cmd
+set PYTHONPATH=src
+python -m questrade --gui
+```
+
+> **GUI Mode:** The GUI displays quotes in a tkinter table with a refresh button.
+> No extra dependencies required — tkinter is included with Python.
+
+## Development Commands
+
+```bash
 pytest                               # Run all tests
 pytest --cov=src                     # Run with coverage
 ruff check src tests                 # Lint
