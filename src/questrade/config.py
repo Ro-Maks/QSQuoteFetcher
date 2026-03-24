@@ -125,3 +125,17 @@ def load_symbols() -> list[SymbolConfig]:
 
 
 TARGET_SYMBOLS: list[SymbolConfig] = load_symbols()
+
+
+def save_symbols(symbols: list[SymbolConfig]) -> None:
+    """Persist the symbol list to symbols.json."""
+    data = [{"symbol": s.symbol, "exchange": s.exchange, "name": s.name} for s in symbols]
+    _SYMBOLS_PATH.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def reload_symbols() -> list[SymbolConfig]:
+    """Reload symbols from disk and update TARGET_SYMBOLS in-place."""
+    fresh = load_symbols()
+    TARGET_SYMBOLS.clear()
+    TARGET_SYMBOLS.extend(fresh)
+    return TARGET_SYMBOLS

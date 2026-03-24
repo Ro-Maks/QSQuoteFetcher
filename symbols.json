@@ -1,6 +1,22 @@
 [
-  { "symbol": "AAPL",  "exchange": "NASDAQ", "name": "Apple Inc." },
-  { "symbol": "AMZN",  "exchange": "NASDAQ", "name": "Amazon.com Inc." },
-  { "symbol": "GOOGL", "exchange": "NASDAQ", "name": "Alphabet Inc." },
-  { "symbol": "MSFT",  "exchange": "NASDAQ", "name": "Microsoft Corporation" }
+  {
+    "symbol": "AAPL",
+    "exchange": "NASDAQ",
+    "name": "Apple Inc."
+  },
+  {
+    "symbol": "AMZN",
+    "exchange": "NASDAQ",
+    "name": "Amazon.com Inc."
+  },
+  {
+    "symbol": "GOOGL",
+    "exchange": "NASDAQ",
+    "name": "Alphabet Inc."
+  },
+  {
+    "symbol": "MSFT",
+    "exchange": "NASDAQ",
+    "name": "Microsoft"
+  }
 ]

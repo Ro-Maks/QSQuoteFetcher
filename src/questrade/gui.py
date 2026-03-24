@@ -102,6 +102,22 @@ def _fmt_status(quote: Quote) -> str:
     return "Real-Time"
 
 
+_SPARK_CHARS = "▁▂▃▄▅▆▇█"
+
+
+def _fmt_sparkline(history: list[float]) -> str:
+    """Convert a list of price values to a Unicode sparkline string."""
+    if len(history) < 2:
+        return ""
+    lo, hi = min(history), max(history)
+    if hi == lo:
+        return _SPARK_CHARS[3] * len(history)
+    scale = len(_SPARK_CHARS) - 1
+    return "".join(
+        _SPARK_CHARS[int((v - lo) / (hi - lo) * scale)] for v in history
+    )
+
+
 def _sort_key_for_column(quote: Quote, column: str) -> tuple[int, float | str]:
     """Return a sortable key for the given column. None values sort last."""
     _COL_MAP: dict[str, object] = {
@@ -113,6 +129,7 @@ def _sort_key_for_column(quote: Quote, column: str) -> tuple[int, float | str]:
         "volume": quote.volume,
         "last_trade": quote.last_trade_time,
         "status": 0 if quote.is_halted else (1 if quote.delay > 0 else 2),
+        "trend": "",
     }
     val = _COL_MAP.get(column, quote.symbol)
     if val is None:
@@ -171,8 +188,8 @@ class QuoteApp(ttk.Window):
 
     def __init__(self) -> None:
         super().__init__(title="Questrade Quote Fetcher", themename="darkly")
-        self.minsize(960, 400)
-        self.geometry("1060x500")
+        self.minsize(1060, 450)
+        self.geometry("1200x500")
         self._auto_refresh_on = False
         self._countdown = 0
         self._countdown_timer_id: str | None = None
@@ -182,6 +199,8 @@ class QuoteApp(ttk.Window):
         self._sort_descending: bool = False
         self._quotes: list[Quote] = []
         self._retrieved_at: object = None
+        self._price_history: dict[str, list[float]] = {}
+        self._selected_symbol: str | None = None
 
         self.configure(background=CLR_BG_DARK)
         # Style combobox dropdown list for dark theme.
@@ -323,6 +342,54 @@ class QuoteApp(ttk.Window):
             font=(FONT_FAMILY, 9),
         )
 
+        # Detail panel
+        style.configure("Dtl.TFrame", background=CLR_BG_CARD)
+        style.configure(
+            "DtlHd.TLabel",
+            background=CLR_BG_CARD,
+            foreground=CLR_TEXT_BRIGHT,
+            font=(FONT_FAMILY, 13, "bold"),
+        )
+        style.configure(
+            "DtlK.TLabel",
+            background=CLR_BG_CARD,
+            foreground=CLR_TEXT_DIM,
+            font=(FONT_FAMILY, 9),
+        )
+        style.configure(
+            "DtlV.TLabel",
+            background=CLR_BG_CARD,
+            foreground=CLR_TEXT,
+            font=(FONT_FAMILY, 10),
+        )
+        style.configure(
+            "DtlHlt.TLabel",
+            background=CLR_BG_CARD,
+            foreground=CLR_RED,
+            font=(FONT_FAMILY, 10, "bold"),
+        )
+
+        # Dialog styles
+        style.configure("Dlg.TFrame", background=CLR_BG_CARD)
+        style.configure(
+            "DlgHd.TLabel",
+            background=CLR_BG_CARD,
+            foreground=CLR_TEXT_BRIGHT,
+            font=(FONT_FAMILY, 13, "bold"),
+        )
+        style.configure(
+            "DlgLbl.TLabel",
+            background=CLR_BG_CARD,
+            foreground=CLR_TEXT,
+            font=(FONT_FAMILY, 10),
+        )
+        style.configure(
+            "DlgDim.TLabel",
+            background=CLR_BG_CARD,
+            foreground=CLR_TEXT_DIM,
+            font=(FONT_FAMILY, 9),
+        )
+
         # Buttons
         style.configure(
             "Refresh.TButton",
@@ -372,6 +439,15 @@ class QuoteApp(ttk.Window):
         self._updated_label = ttk.Label(updated_area, text="--:--:-- --", style="Refreshval.TLabel")
         self._updated_label.pack(side=LEFT)
 
+        self._manage_btn = ttk.Button(
+            btn_area,
+            text="\u2630  Manage",
+            command=self._open_symbol_manager,
+            bootstyle="secondary-outline",  # type: ignore[arg-type]
+            style="AutoRefresh.TButton",
+        )
+        self._manage_btn.pack(side=RIGHT, padx=(8, 0))
+
         self._auto_btn = ttk.Button(
             btn_area,
             text="\u21bb  Auto: OFF",
@@ -415,8 +491,9 @@ class QuoteApp(ttk.Window):
         # --- Table area ---
         table_frame = ttk.Frame(self, style="Dark.TFrame", padding=(16, 12, 16, 0))
         table_frame.pack(fill=BOTH, expand=True)
+        self._table_frame = table_frame
 
-        columns = ("symbol", "last_price", "change", "bid", "ask", "volume", "last_trade")
+        columns = ("symbol", "last_price", "change", "bid", "ask", "volume", "last_trade", "trend")
         self._tree = ttk.Treeview(
             table_frame,
             columns=columns,
@@ -433,6 +510,7 @@ class QuoteApp(ttk.Window):
             "ask": "ASK",
             "volume": "VOLUME",
             "last_trade": "LAST TRADE",
+            "trend": "TREND",
             "status": "STATUS",
         }
         col_config = {
@@ -443,12 +521,16 @@ class QuoteApp(ttk.Window):
             "ask":        {"width": 90,  "minwidth": 70,  "anchor": E},
             "volume":     {"width": 90,  "minwidth": 70,  "anchor": E},
             "last_trade": {"width": 160, "minwidth": 130, "anchor": tk.CENTER},
+            "trend":      {"width": 140, "minwidth": 100, "anchor": tk.CENTER},
         }
         for col in columns:
-            self._tree.heading(
-                col, text=self._headings[col],
-                command=lambda c=col: self._on_sort(c),
-            )
+            if col == "trend":
+                self._tree.heading(col, text=self._headings[col])
+            else:
+                self._tree.heading(
+                    col, text=self._headings[col],
+                    command=lambda c=col: self._on_sort(c),
+                )
             cfg = col_config[col]
             self._tree.column(col, width=cfg["width"], minwidth=cfg["minwidth"], anchor=cfg["anchor"])
 
@@ -513,6 +595,37 @@ class QuoteApp(ttk.Window):
         scrollbar.pack(side=RIGHT, fill=Y)
         self._status_tree.pack(side=RIGHT, fill=Y)
         self._tree.pack(side=LEFT, fill=BOTH, expand=True)
+
+        # Event bindings for row selection (detail panel)
+        self._tree.bind("<<TreeviewSelect>>", self._on_row_select)
+        self._status_tree.bind("<Button-1>", self._on_status_tree_click)
+
+        # --- Detail panel (hidden initially) ---
+        self._detail_outer = ttk.Frame(self, style="Dark.TFrame", padding=(16, 0, 16, 0))
+        detail_accent = tk.Frame(self._detail_outer, background=CLR_ACCENT, height=2)
+        detail_accent.pack(fill=X)
+        detail_inner = ttk.Frame(self._detail_outer, style="Dtl.TFrame", padding=(20, 12))
+        detail_inner.pack(fill=X)
+
+        self._detail_symbol_lbl = ttk.Label(detail_inner, text="", style="DtlHd.TLabel")
+        self._detail_symbol_lbl.grid(row=0, column=0, columnspan=6, sticky=W, pady=(0, 8))
+
+        self._detail_fields: dict[str, ttk.Label] = {}
+        field_defs = [
+            ("Open Price", "open"),
+            ("Bid", "bid"),
+            ("Ask", "ask"),
+            ("Volume", "vol"),
+            ("Last Trade", "time"),
+            ("Status", "sts"),
+        ]
+        for col_idx, (label_text, key) in enumerate(field_defs):
+            ttk.Label(detail_inner, text=label_text, style="DtlK.TLabel").grid(
+                row=1, column=col_idx, sticky=W, padx=(0, 4),
+            )
+            val_lbl = ttk.Label(detail_inner, text="---", style="DtlV.TLabel")
+            val_lbl.grid(row=2, column=col_idx, sticky=W, padx=(0, 24))
+            self._detail_fields[key] = val_lbl
 
         # --- Countdown progress bar ---
         self._progress = ttk.Progressbar(
@@ -634,6 +747,15 @@ class QuoteApp(ttk.Window):
     def _on_fetch_complete(self, quotes: list[Quote], retrieved_at: object) -> None:
         self._quotes = quotes
         self._retrieved_at = retrieved_at
+
+        # Accumulate price history for sparklines
+        for q in quotes:
+            if q.last_trade_price is not None:
+                hist = self._price_history.setdefault(q.symbol, [])
+                hist.append(q.last_trade_price)
+                if len(hist) > 20:
+                    hist.pop(0)
+
         self._sort_and_display()
 
         self._quote_count = len(quotes)
@@ -700,6 +822,7 @@ class QuoteApp(ttk.Window):
                 _fmt_price(quote.ask_price),
                 _fmt_volume(quote.volume),
                 _fmt_time(quote.last_trade_time),
+                _fmt_sparkline(self._price_history.get(quote.symbol, [])),
             ), tags=tuple(tags) if tags else ())
 
             self._status_tree.insert("", END, values=(
@@ -708,12 +831,21 @@ class QuoteApp(ttk.Window):
 
         self._update_heading_text()
 
+        # Re-select previously selected row for detail panel
+        if self._selected_symbol:
+            for item in self._tree.get_children():
+                vals = self._tree.item(item, "values")
+                if vals and vals[0].strip() == self._selected_symbol:
+                    self._tree.selection_set(item)
+                    self._show_detail_panel(self._selected_symbol)
+                    break
+
     def _update_heading_text(self) -> None:
         """Update column headings to show sort indicator on the active column."""
         arrow = " \u25b2" if not self._sort_descending else " \u25bc"
-        for col in ("symbol", "last_price", "change", "bid", "ask", "volume", "last_trade"):
+        for col in ("symbol", "last_price", "change", "bid", "ask", "volume", "last_trade", "trend"):
             text = self._headings[col]
-            if col == self._sort_column:
+            if col == self._sort_column and col != "trend":
                 text += arrow
             self._tree.heading(col, text=text)
 
@@ -734,6 +866,203 @@ class QuoteApp(ttk.Window):
         # Keep auto-refreshing even after errors.
         if self._auto_refresh_on:
             self._start_countdown()
+
+    # --- Detail panel ---
+
+    def _on_row_select(self, _event: tk.Event) -> None:  # type: ignore[type-arg]
+        selection = self._tree.selection()
+        if not selection:
+            return
+        item = selection[0]
+        values = self._tree.item(item, "values")
+        if not values:
+            return
+        symbol = values[0].strip()
+
+        # Toggle: click same symbol again to collapse
+        if symbol == self._selected_symbol:
+            self._hide_detail_panel()
+            return
+
+        self._selected_symbol = symbol
+
+        # Sync status tree selection
+        main_items = self._tree.get_children()
+        status_items = self._status_tree.get_children()
+        try:
+            idx = list(main_items).index(item)
+            if idx < len(status_items):
+                self._status_tree.selection_set(status_items[idx])
+        except ValueError:
+            pass
+
+        self._show_detail_panel(symbol)
+
+    def _on_status_tree_click(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+        row_id = self._status_tree.identify_row(event.y)
+        if not row_id:
+            return
+        status_items = list(self._status_tree.get_children())
+        main_items = list(self._tree.get_children())
+        try:
+            idx = status_items.index(row_id)
+        except ValueError:
+            return
+        if 0 <= idx < len(main_items):
+            self._tree.selection_set(main_items[idx])
+            self._tree.event_generate("<<TreeviewSelect>>")
+
+    def _show_detail_panel(self, symbol: str) -> None:
+        quote = next((q for q in self._quotes if q.symbol == symbol), None)
+        if quote is None:
+            return
+
+        from questrade.config import TARGET_SYMBOLS
+        name = next((s.name for s in TARGET_SYMBOLS if s.symbol == symbol), symbol)
+
+        self._detail_symbol_lbl.configure(text=f"{symbol}  \u2014  {name}")
+        self._detail_fields["open"].configure(text=_fmt_price(quote.open_price))
+        self._detail_fields["bid"].configure(text=_fmt_price(quote.bid_price))
+        self._detail_fields["ask"].configure(text=_fmt_price(quote.ask_price))
+        self._detail_fields["vol"].configure(text=_fmt_volume(quote.volume))
+        self._detail_fields["time"].configure(text=_fmt_time(quote.last_trade_time))
+
+        if quote.is_halted:
+            self._detail_fields["sts"].configure(text="HALTED", style="DtlHlt.TLabel")
+        elif quote.delay > 0:
+            self._detail_fields["sts"].configure(text=f"Delayed {quote.delay}m", style="DtlV.TLabel")
+        else:
+            self._detail_fields["sts"].configure(text="Real-Time", style="DtlV.TLabel")
+
+        self._detail_outer.pack(fill=X, after=self._table_frame)
+
+    def _hide_detail_panel(self) -> None:
+        self._selected_symbol = None
+        self._detail_outer.pack_forget()
+        self._tree.selection_remove(*self._tree.selection())
+
+    # --- Symbol manager ---
+
+    def _open_symbol_manager(self) -> None:
+        from questrade.config import TARGET_SYMBOLS, save_symbols, reload_symbols
+        from questrade.models.symbol import SymbolConfig
+
+        dlg = tk.Toplevel(self)
+        dlg.title("Manage Symbols")
+        dlg.geometry("520x460")
+        dlg.configure(background=CLR_BG_CARD)
+        dlg.transient(self)
+        dlg.grab_set()
+
+        # Header
+        hdr = ttk.Frame(dlg, style="Dlg.TFrame", padding=(16, 12))
+        hdr.pack(fill=X)
+        ttk.Label(hdr, text="Manage Watchlist", style="DlgHd.TLabel").pack(anchor=W)
+        count_lbl = ttk.Label(hdr, text=f"{len(TARGET_SYMBOLS)} symbols", style="DlgDim.TLabel")
+        count_lbl.pack(anchor=W)
+
+        # Scrollable symbol list
+        list_frame = ttk.Frame(dlg, style="Dlg.TFrame", padding=(16, 8))
+        list_frame.pack(fill=BOTH, expand=True)
+
+        canvas = tk.Canvas(list_frame, background=CLR_BG_CARD, highlightthickness=0)
+        list_scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas, style="Dlg.TFrame")
+
+        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=list_scrollbar.set)
+
+        list_scrollbar.pack(side=RIGHT, fill=Y)
+        canvas.pack(side=LEFT, fill=BOTH, expand=True)
+
+        current_symbols: list[SymbolConfig] = list(TARGET_SYMBOLS)
+
+        def _rebuild_list() -> None:
+            for w in inner.winfo_children():
+                w.destroy()
+            for i, sym in enumerate(current_symbols):
+                row = ttk.Frame(inner, style="Dlg.TFrame")
+                row.pack(fill=X, pady=2)
+                ttk.Label(
+                    row, text=f"{sym.symbol}  ({sym.exchange})",
+                    style="DlgLbl.TLabel", width=20,
+                ).pack(side=LEFT)
+                ttk.Label(row, text=sym.name, style="DlgDim.TLabel").pack(side=LEFT, padx=(8, 0))
+                ttk.Button(
+                    row, text="\u2715", width=3,
+                    bootstyle="danger-outline",  # type: ignore[arg-type]
+                    command=lambda idx=i: _remove(idx),
+                ).pack(side=RIGHT)
+            count_lbl.configure(text=f"{len(current_symbols)} symbols")
+
+        def _remove(idx: int) -> None:
+            current_symbols.pop(idx)
+            _rebuild_list()
+
+        _rebuild_list()
+
+        # Add symbol area
+        add_frame = ttk.Frame(dlg, style="Dlg.TFrame", padding=(16, 8, 16, 12))
+        add_frame.pack(fill=X)
+
+        tk.Frame(add_frame, background=CLR_BORDER, height=1).pack(fill=X, pady=(0, 8))
+
+        entry_row = ttk.Frame(add_frame, style="Dlg.TFrame")
+        entry_row.pack(fill=X)
+
+        sym_var = tk.StringVar()
+        ttk.Entry(entry_row, textvariable=sym_var, width=10).pack(side=LEFT, padx=(0, 4))
+
+        exchanges = ["NASDAQ", "NYSE", "TSX", "TSX-V", "ARCA"]
+        exch_var = tk.StringVar(value="NASDAQ")
+        ttk.Combobox(
+            entry_row, textvariable=exch_var, values=exchanges,
+            width=8, state="readonly",
+        ).pack(side=LEFT, padx=(0, 4))
+
+        name_var = tk.StringVar()
+        ttk.Entry(entry_row, textvariable=name_var, width=20).pack(side=LEFT, padx=(0, 4))
+
+        def _add() -> None:
+            s = sym_var.get().strip().upper()
+            if not s:
+                return
+            if any(c.symbol == s and c.exchange == exch_var.get() for c in current_symbols):
+                return
+            n = name_var.get().strip() or s
+            current_symbols.append(SymbolConfig(symbol=s, exchange=exch_var.get(), name=n))
+            sym_var.set("")
+            name_var.set("")
+            _rebuild_list()
+
+        ttk.Button(entry_row, text="Add", bootstyle="success", command=_add).pack(side=LEFT)  # type: ignore[arg-type]
+
+        # Bottom buttons
+        btn_row = ttk.Frame(dlg, style="Dlg.TFrame", padding=(16, 0, 16, 12))
+        btn_row.pack(fill=X)
+
+        def _save() -> None:
+            save_symbols(current_symbols)
+            reload_symbols()
+            # Clean stale price history
+            valid = {s.symbol for s in current_symbols}
+            for k in [k for k in self._price_history if k not in valid]:
+                del self._price_history[k]
+            # Hide detail panel if selected symbol was removed
+            if self._selected_symbol and self._selected_symbol not in valid:
+                self._hide_detail_panel()
+            dlg.destroy()
+            self._refresh_quotes()
+
+        ttk.Button(
+            btn_row, text="Save", bootstyle="success",  # type: ignore[arg-type]
+            command=_save,
+        ).pack(side=RIGHT, padx=(4, 0))
+        ttk.Button(
+            btn_row, text="Cancel", bootstyle="secondary-outline",  # type: ignore[arg-type]
+            command=dlg.destroy,
+        ).pack(side=RIGHT)
 
 
 def main() -> None:
