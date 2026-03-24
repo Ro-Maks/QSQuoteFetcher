@@ -45,10 +45,10 @@ def test_fetch_quotes_returns_prices(httpx_mock):
 ### `test_symbols.py`
 
 - ✅ MSFT resolves correctly against NASDAQ
-- ✅ FIE resolves correctly against TSX
-- ✅ XEQT resolves correctly against TSX
+- ✅ FIE.TO resolves correctly against TSX
+- ✅ XEQT.TO resolves correctly against TSX
 - ✅ Unknown symbol raises `SymbolNotFoundError`
-- ✅ FIE on wrong exchange (NASDAQ) raises `SymbolNotFoundError`
+- ✅ FIE.TO on wrong exchange (NASDAQ) raises `SymbolNotFoundError`
 
 ### `test_quotes.py`
 

@@ -16,19 +16,15 @@ If any are missing, ask the user before proceeding.
 
 ## Tasks
 
-### 1. Update `src/questrade/config.py`
+### 1. Update `symbols.json`
 
-Add the new entry to `TARGET_SYMBOLS`:
+Add the new entry to the JSON array in `symbols.json`:
 
-```python
-TARGET_SYMBOLS: list[SymbolConfig] = [
-    SymbolConfig(symbol="MSFT",  exchange="NASDAQ", name="Microsoft Corporation"),
-    SymbolConfig(symbol="FIE",   exchange="TSX",    name="iShares Canadian Financial Monthly Income ETF"),
-    SymbolConfig(symbol="XEQT",  exchange="TSX",    name="iShares Core Equity ETF Portfolio"),
-    # ADD HERE:
-    SymbolConfig(symbol="{SYMBOL}", exchange="{EXCHANGE}", name="{FULL NAME}"),
-]
+```json
+{ "symbol": "{SYMBOL}", "exchange": "{EXCHANGE}", "name": "{FULL NAME}" }
 ```
+
+TSX-listed securities require the `.TO` suffix (e.g. `FIE.TO`, `XEQT.TO`).
 
 ### 2. Add Test in `tests/unit/test_symbols.py`
 
@@ -44,16 +40,11 @@ def test_resolves_{symbol_lower}_on_{exchange_lower}(httpx_mock):
 
 ### 3. Update README.md
 
-Add the new symbol to the **Target Securities** table.
-
-### 4. Update AGENTS.md
-
-Add the new symbol to the **Target Securities** section.
+Update the watchlist example in the README if desired.
 
 ## Checklist
 
-- [ ] `TARGET_SYMBOLS` list updated in `config.py`
+- [ ] `symbols.json` updated with new entry
 - [ ] New symbol test added and passing (`pytest tests/unit/test_symbols.py`)
-- [ ] README table updated
-- [ ] AGENTS.md updated
+- [ ] README updated (if desired)
 - [ ] All existing tests still pass (`pytest`)

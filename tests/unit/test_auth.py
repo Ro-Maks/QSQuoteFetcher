@@ -1,8 +1,6 @@
 """Unit tests for src/questrade/api/auth.py."""
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import httpx
 import pytest
 from pytest_httpx import HTTPXMock

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import ctypes
-import logging
 import threading
 import tkinter as tk
 from datetime import datetime, timezone
@@ -19,8 +18,6 @@ from questrade.models.errors import (
     TokenRefreshError,
 )
 from questrade.models.quote import Quote
-
-logger = logging.getLogger(__name__)
 
 # Enable DPI awareness on Windows for crisp rendering.
 try:

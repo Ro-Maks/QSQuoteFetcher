@@ -115,7 +115,7 @@ def load_symbols() -> list[SymbolConfig]:
     if not _SYMBOLS_PATH.exists():
         raise EnvironmentError(
             f"symbols.json not found at {_SYMBOLS_PATH}. "
-            "Copy symbols.json.example or create one — see README."
+            "Create a symbols.json file in the project root — see README."
         )
     try:
         data = json.loads(_SYMBOLS_PATH.read_text(encoding="utf-8"))

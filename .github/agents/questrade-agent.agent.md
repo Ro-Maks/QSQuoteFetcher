@@ -27,7 +27,7 @@ authenticate → resolve symbol IDs → batch-fetch quotes → display results.
 
 Activates when the user says:
 - "fetch quotes" / "get prices" / "check current prices"
-- "what are MSFT / FIE / XEQT trading at"
+- "what are MSFT / AAPL / GOOGL trading at"
 - "run the price fetcher"
 
 ## Execution Plan

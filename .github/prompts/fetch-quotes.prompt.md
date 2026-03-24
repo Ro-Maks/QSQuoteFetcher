@@ -4,7 +4,7 @@
 
 ---
 
-Execute the full Questrade quote-retrieval workflow for MSFT, FIE, and XEQT.
+Execute the full Questrade quote-retrieval workflow for the symbols defined in `symbols.json`.
 
 ## Step 1 — Load Config
 
@@ -54,9 +54,10 @@ Expected output format:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  QUESTRADE LIVE QUOTES  |  Retrieved: 2026-03-21T19:34:12Z
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ AAPL   | $178.72  | 2026-03-21 3:34 PM ET | Real-Time     | ✅ Active
+ AMZN   | $186.45  | 2026-03-21 3:34 PM ET | Real-Time     | ✅ Active
+ GOOGL  | $155.30  | 2026-03-21 3:34 PM ET | Real-Time     | ✅ Active
  MSFT   | $415.23  | 2026-03-21 3:34 PM ET | Real-Time     | ✅ Active
- FIE    | $8.92    | 2026-03-21 3:34 PM ET | Real-Time     | ✅ Active
- XEQT   | $31.47   | 2026-03-21 3:34 PM ET | Real-Time     | ✅ Active
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 

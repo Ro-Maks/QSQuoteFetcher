@@ -29,8 +29,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
-logger = logging.getLogger(__name__)
-
 
 def fetch_all_quotes() -> tuple[list[Quote], datetime]:
     """Authenticate, resolve symbols, and fetch quotes.

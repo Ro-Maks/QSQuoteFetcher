@@ -1,8 +1,6 @@
 """Shared httpx client with Bearer auth injection and 401 retry logic."""
 from __future__ import annotations
 
-import logging
-
 import httpx
 
 from questrade.models.errors import (
@@ -10,9 +8,6 @@ from questrade.models.errors import (
     RateLimitError,
     TokenRefreshError,
 )
-
-logger = logging.getLogger(__name__)
-
 
 class BearerAuth(httpx.Auth):
     """httpx Auth class that injects a Bearer token into every request."""
