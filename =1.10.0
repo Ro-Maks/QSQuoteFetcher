@@ -1,0 +1,12 @@
+Collecting ttkbootstrap
+  Downloading ttkbootstrap-1.20.2-py3-none-any.whl.metadata (6.3 kB)
+Collecting pillow<13,>=10 (from ttkbootstrap)
+  Using cached pillow-12.1.1-cp314-cp314-win_amd64.whl.metadata (9.0 kB)
+Downloading ttkbootstrap-1.20.2-py3-none-any.whl (190 kB)
+Using cached pillow-12.1.1-cp314-cp314-win_amd64.whl (7.2 MB)
+Installing collected packages: pillow, ttkbootstrap
+
+Successfully installed pillow-12.1.1 ttkbootstrap-1.20.2
+
+[notice] A new release of pip is available: 25.3 -> 26.0.1
+[notice] To update, run: C:\GitProjects\QSQuoteFetcher\.venv\Scripts\python.exe -m pip install --upgrade pip
