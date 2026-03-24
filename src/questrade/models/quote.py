@@ -24,6 +24,12 @@ class Quote(BaseModel):
     ask_price: float | None         = Field(alias="askPrice")     # None outside market hours
     volume: int
     open_price: float | None        = Field(alias="openPrice", default=None)
+    high_price: float | None        = Field(alias="highPrice", default=None)
+    low_price: float | None         = Field(alias="lowPrice", default=None)
+    vwap: float | None              = Field(alias="VWAP", default=None)
+    bid_size: int | None            = Field(alias="bidSize", default=None)
+    ask_size: int | None            = Field(alias="askSize", default=None)
+    last_trade_size: int | None     = Field(alias="lastTradeSize", default=None)
     delay: int
     is_halted: bool                 = Field(alias="isHalted")
 

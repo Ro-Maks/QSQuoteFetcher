@@ -201,6 +201,7 @@ class QuoteApp(ttk.Window):
         self._retrieved_at: object = None
         self._price_history: dict[str, list[float]] = {}
         self._selected_symbol: str | None = None
+        self._programmatic_select = False
 
         self.configure(background=CLR_BG_DARK)
         # Style combobox dropdown list for dark theme.
@@ -367,6 +368,24 @@ class QuoteApp(ttk.Window):
             background=CLR_BG_CARD,
             foreground=CLR_RED,
             font=(FONT_FAMILY, 10, "bold"),
+        )
+        style.configure(
+            "DtlGrn.TLabel",
+            background=CLR_BG_CARD,
+            foreground=CLR_GREEN,
+            font=(FONT_FAMILY, 10),
+        )
+        style.configure(
+            "DtlRng.TLabel",
+            background=CLR_BG_CARD,
+            foreground=CLR_TEXT_DIM,
+            font=(FONT_FAMILY, 9),
+        )
+        style.configure(
+            "DtlSpk.TLabel",
+            background=CLR_BG_CARD,
+            foreground=CLR_ACCENT,
+            font=(FONT_FAMILY, 14),
         )
 
         # Dialog styles
@@ -607,25 +626,67 @@ class QuoteApp(ttk.Window):
         detail_inner = ttk.Frame(self._detail_outer, style="Dtl.TFrame", padding=(20, 12))
         detail_inner.pack(fill=X)
 
-        self._detail_symbol_lbl = ttk.Label(detail_inner, text="", style="DtlHd.TLabel")
-        self._detail_symbol_lbl.grid(row=0, column=0, columnspan=6, sticky=W, pady=(0, 8))
+        self._detail_fields: dict[str, ttk.Label | tk.Canvas] = {}
 
-        self._detail_fields: dict[str, ttk.Label] = {}
-        field_defs = [
-            ("Open Price", "open"),
-            ("Bid", "bid"),
-            ("Ask", "ask"),
-            ("Volume", "vol"),
-            ("Last Trade", "time"),
-            ("Status", "sts"),
+        # Row 0: Header (symbol + name) and status badge
+        hdr_frame = ttk.Frame(detail_inner, style="Dtl.TFrame")
+        hdr_frame.grid(row=0, column=0, columnspan=8, sticky="ew", pady=(0, 8))
+        hdr_frame.columnconfigure(0, weight=1)
+        self._detail_symbol_lbl = ttk.Label(hdr_frame, text="", style="DtlHd.TLabel")
+        self._detail_symbol_lbl.grid(row=0, column=0, sticky=W)
+        sts_lbl = ttk.Label(hdr_frame, text="", style="DtlV.TLabel")
+        sts_lbl.grid(row=0, column=1, sticky=E)
+        self._detail_fields["sts"] = sts_lbl
+
+        # Row 1: Day range bar
+        range_frame = ttk.Frame(detail_inner, style="Dtl.TFrame")
+        range_frame.grid(row=1, column=0, columnspan=8, sticky="ew", pady=(0, 8))
+        ttk.Label(range_frame, text="Day Range", style="DtlK.TLabel").pack(side=LEFT, padx=(0, 8))
+        range_lo_lbl = ttk.Label(range_frame, text="---", style="DtlRng.TLabel")
+        range_lo_lbl.pack(side=LEFT, padx=(0, 4))
+        self._detail_fields["range_lo"] = range_lo_lbl
+        range_canvas = tk.Canvas(
+            range_frame, height=14, width=300,
+            background=CLR_BG_DARK, highlightthickness=0,
+        )
+        range_canvas.pack(side=LEFT, padx=4, fill=X, expand=True)
+        self._detail_fields["range_canvas"] = range_canvas
+        range_hi_lbl = ttk.Label(range_frame, text="---", style="DtlRng.TLabel")
+        range_hi_lbl.pack(side=LEFT, padx=(4, 0))
+        self._detail_fields["range_hi"] = range_hi_lbl
+
+        # Row 2: Key metrics grid
+        metrics = [
+            ("Open", "open"),
+            ("VWAP", "vwap"),
+            ("Spread", "spread"),
+            ("Bid \u00d7 Size", "bid_depth"),
+            ("Ask \u00d7 Size", "ask_depth"),
+            ("Last Trade", "last_trade"),
         ]
-        for col_idx, (label_text, key) in enumerate(field_defs):
+        for col_idx, (label_text, key) in enumerate(metrics):
             ttk.Label(detail_inner, text=label_text, style="DtlK.TLabel").grid(
-                row=1, column=col_idx, sticky=W, padx=(0, 4),
+                row=2, column=col_idx, sticky=W, padx=(0, 4),
             )
             val_lbl = ttk.Label(detail_inner, text="---", style="DtlV.TLabel")
-            val_lbl.grid(row=2, column=col_idx, sticky=W, padx=(0, 24))
+            val_lbl.grid(row=3, column=col_idx, sticky=W, padx=(0, 20))
             self._detail_fields[key] = val_lbl
+
+        # Row 4: Computed stats + enlarged sparkline
+        stats_frame = ttk.Frame(detail_inner, style="Dtl.TFrame")
+        stats_frame.grid(row=4, column=0, columnspan=8, sticky="ew", pady=(8, 0))
+        from_open_lbl = ttk.Label(stats_frame, text="", style="DtlV.TLabel")
+        from_open_lbl.pack(side=LEFT, padx=(0, 20))
+        self._detail_fields["from_open"] = from_open_lbl
+        off_high_lbl = ttk.Label(stats_frame, text="", style="DtlV.TLabel")
+        off_high_lbl.pack(side=LEFT, padx=(0, 20))
+        self._detail_fields["off_high"] = off_high_lbl
+        spark_lbl = ttk.Label(stats_frame, text="", style="DtlSpk.TLabel")
+        spark_lbl.pack(side=LEFT, padx=(0, 8))
+        self._detail_fields["sparkline"] = spark_lbl
+        spark_stats_lbl = ttk.Label(stats_frame, text="", style="DtlK.TLabel")
+        spark_stats_lbl.pack(side=LEFT)
+        self._detail_fields["spark_stats"] = spark_stats_lbl
 
         # --- Countdown progress bar ---
         self._progress = ttk.Progressbar(
@@ -781,6 +842,7 @@ class QuoteApp(ttk.Window):
 
     def _sort_and_display(self) -> None:
         """Sort stored quotes and repopulate both treeviews."""
+        self._programmatic_select = True
         sorted_quotes = sorted(
             self._quotes,
             key=lambda q: _sort_key_for_column(q, self._sort_column),
@@ -840,6 +902,8 @@ class QuoteApp(ttk.Window):
                     self._show_detail_panel(self._selected_symbol)
                     break
 
+        self.after_idle(self._reset_programmatic_select)
+
     def _update_heading_text(self) -> None:
         """Update column headings to show sort indicator on the active column."""
         arrow = " \u25b2" if not self._sort_descending else " \u25bc"
@@ -869,7 +933,12 @@ class QuoteApp(ttk.Window):
 
     # --- Detail panel ---
 
+    def _reset_programmatic_select(self) -> None:
+        self._programmatic_select = False
+
     def _on_row_select(self, _event: tk.Event) -> None:  # type: ignore[type-arg]
+        if self._programmatic_select:
+            return
         selection = self._tree.selection()
         if not selection:
             return
@@ -912,6 +981,28 @@ class QuoteApp(ttk.Window):
             self._tree.selection_set(main_items[idx])
             self._tree.event_generate("<<TreeviewSelect>>")
 
+    def _draw_range_bar(self, canvas: tk.Canvas, low: float, high: float, current: float) -> None:
+        """Draw a day range bar on the canvas with a marker for the current price."""
+        canvas.delete("all")
+        canvas.update_idletasks()
+        w = canvas.winfo_width() or 300
+        h = canvas.winfo_height() or 14
+        pad = 2
+
+        # Track background
+        canvas.create_rectangle(pad, 4, w - pad, h - 4, fill=CLR_BORDER, outline="")
+
+        if high > low:
+            ratio = (current - low) / (high - low)
+            ratio = max(0.0, min(1.0, ratio))
+            fill_x = pad + ratio * (w - 2 * pad)
+
+            # Filled portion (low → current)
+            canvas.create_rectangle(pad, 4, fill_x, h - 4, fill=CLR_ACCENT, outline="")
+
+            # Current price marker (vertical line)
+            canvas.create_line(fill_x, 1, fill_x, h - 1, fill=CLR_TEXT_BRIGHT, width=2)
+
     def _show_detail_panel(self, symbol: str) -> None:
         quote = next((q for q in self._quotes if q.symbol == symbol), None)
         if quote is None:
@@ -920,19 +1011,102 @@ class QuoteApp(ttk.Window):
         from questrade.config import TARGET_SYMBOLS
         name = next((s.name for s in TARGET_SYMBOLS if s.symbol == symbol), symbol)
 
+        # Header
         self._detail_symbol_lbl.configure(text=f"{symbol}  \u2014  {name}")
-        self._detail_fields["open"].configure(text=_fmt_price(quote.open_price))
-        self._detail_fields["bid"].configure(text=_fmt_price(quote.bid_price))
-        self._detail_fields["ask"].configure(text=_fmt_price(quote.ask_price))
-        self._detail_fields["vol"].configure(text=_fmt_volume(quote.volume))
-        self._detail_fields["time"].configure(text=_fmt_time(quote.last_trade_time))
 
+        # Status badge
         if quote.is_halted:
-            self._detail_fields["sts"].configure(text="HALTED", style="DtlHlt.TLabel")
+            self._detail_fields["sts"].configure(text="\u26d4 HALTED", style="DtlHlt.TLabel")
         elif quote.delay > 0:
-            self._detail_fields["sts"].configure(text=f"Delayed {quote.delay}m", style="DtlV.TLabel")
+            self._detail_fields["sts"].configure(text=f"\u23f1 Delayed {quote.delay}m", style="DtlV.TLabel")
         else:
-            self._detail_fields["sts"].configure(text="Real-Time", style="DtlV.TLabel")
+            self._detail_fields["sts"].configure(text="\u26a1 Real-Time", style="DtlGrn.TLabel")
+
+        # Day range bar
+        lo, hi = quote.low_price, quote.high_price
+        cur = quote.last_trade_price
+        if lo is not None and hi is not None and cur is not None:
+            self._detail_fields["range_lo"].configure(text=_fmt_price(lo))
+            self._detail_fields["range_hi"].configure(text=_fmt_price(hi))
+            canvas = self._detail_fields["range_canvas"]
+            self._detail_outer.pack(fill=X, after=self._table_frame)
+            self.update_idletasks()
+            self._draw_range_bar(canvas, lo, hi, cur)  # type: ignore[arg-type]
+        else:
+            self._detail_fields["range_lo"].configure(text="---")
+            self._detail_fields["range_hi"].configure(text="---")
+            canvas = self._detail_fields["range_canvas"]
+            canvas.delete("all")  # type: ignore[union-attr]
+
+        # Key metrics
+        self._detail_fields["open"].configure(text=_fmt_price(quote.open_price))
+        self._detail_fields["vwap"].configure(text=_fmt_price(quote.vwap))
+
+        # Spread
+        if quote.bid_price is not None and quote.ask_price is not None:
+            spread = quote.ask_price - quote.bid_price
+            spread_pct = (spread / quote.ask_price * 100) if quote.ask_price else 0
+            self._detail_fields["spread"].configure(text=f"${spread:.2f} ({spread_pct:.2f}%)")
+        else:
+            self._detail_fields["spread"].configure(text="---")
+
+        # Bid × Size
+        if quote.bid_price is not None:
+            bid_txt = _fmt_price(quote.bid_price)
+            if quote.bid_size is not None:
+                bid_txt += f" \u00d7 {quote.bid_size:,}"
+            self._detail_fields["bid_depth"].configure(text=bid_txt)
+        else:
+            self._detail_fields["bid_depth"].configure(text="---")
+
+        # Ask × Size
+        if quote.ask_price is not None:
+            ask_txt = _fmt_price(quote.ask_price)
+            if quote.ask_size is not None:
+                ask_txt += f" \u00d7 {quote.ask_size:,}"
+            self._detail_fields["ask_depth"].configure(text=ask_txt)
+        else:
+            self._detail_fields["ask_depth"].configure(text="---")
+
+        # Last Trade (size @ time)
+        time_str = _fmt_time(quote.last_trade_time)
+        if quote.last_trade_size is not None:
+            self._detail_fields["last_trade"].configure(text=f"{quote.last_trade_size:,} @ {time_str}")
+        else:
+            self._detail_fields["last_trade"].configure(text=time_str)
+
+        # From Open %
+        if cur is not None and quote.open_price is not None and quote.open_price != 0:
+            from_open_pct = (cur - quote.open_price) / quote.open_price * 100
+            sign = "+" if from_open_pct >= 0 else ""
+            style = "DtlGrn.TLabel" if from_open_pct >= 0 else "DtlHlt.TLabel"
+            self._detail_fields["from_open"].configure(
+                text=f"From Open  {sign}{from_open_pct:.2f}%", style=style,
+            )
+        else:
+            self._detail_fields["from_open"].configure(text="From Open  ---", style="DtlV.TLabel")
+
+        # Off High %
+        if cur is not None and hi is not None and hi != 0:
+            off_high_pct = (cur - hi) / hi * 100
+            style = "DtlGrn.TLabel" if off_high_pct >= 0 else "DtlHlt.TLabel"
+            self._detail_fields["off_high"].configure(
+                text=f"Off High  {off_high_pct:.2f}%", style=style,
+            )
+        else:
+            self._detail_fields["off_high"].configure(text="Off High  ---", style="DtlV.TLabel")
+
+        # Enlarged sparkline + min/max/avg stats
+        history = self._price_history.get(symbol, [])
+        if len(history) >= 2:
+            self._detail_fields["sparkline"].configure(text=_fmt_sparkline(history))
+            avg = sum(history) / len(history)
+            self._detail_fields["spark_stats"].configure(
+                text=f"  Min {_fmt_price(min(history))}  Avg {_fmt_price(avg)}  Max {_fmt_price(max(history))}  ({len(history)} ticks)",
+            )
+        else:
+            self._detail_fields["sparkline"].configure(text="")
+            self._detail_fields["spark_stats"].configure(text="  Sparkline available after 2+ refreshes")
 
         self._detail_outer.pack(fill=X, after=self._table_frame)
 
