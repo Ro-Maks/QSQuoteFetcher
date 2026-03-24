@@ -4,7 +4,39 @@ Real-time security prices from the Questrade API, with both CLI and GUI interfac
 
 ![Questrade Quote Fetcher GUI](docs/screenshot.png)
 
-## Watchlist
+## Getting Started
+
+### 1. Get a Questrade API Token
+
+Questrade uses OAuth 2.0 with short-lived access tokens (30 min) and long-lived refresh tokens. You will need a refresh token to authenticate.
+
+1. Log in to your [Questrade account](https://www.questrade.com/api/documentation/getting-started) and generate an API refresh token.
+2. Copy the example environment file and paste your token in:
+
+```cmd
+copy .env.example .env
+```
+
+Open `.env` and set your token:
+
+```
+QUESTRADE_REFRESH_TOKEN=your_token_here
+```
+
+The app rotates the refresh token automatically after each use — no manual renewal needed.
+
+### 2. Install Dependencies
+
+Create a virtual environment, activate it, and install packages:
+
+```cmd
+python -m venv .venv
+.venv\Scripts\activate.bat
+pip install -r requirements.txt
+pip install -e .
+```
+
+### 3. Configure Your Watchlist
 
 Edit `symbols.json` in the project root to add or remove securities:
 
@@ -19,55 +51,31 @@ Edit `symbols.json` in the project root to add or remove securities:
 
 For TSX-listed securities, add the `.TO` suffix (e.g. `FIE.TO`).
 
-## Setup
+### 4. Run
 
-```bash
-python -m venv .venv
+```cmd
+python -m questrade.main     # Fetch quotes in the terminal (CLI)
+python -m questrade --gui    # Launch the GUI window
 ```
 
-| Shell      | Activate                        |
-|------------|---------------------------------|
-| bash       | `source .venv/bin/activate`     |
-| PowerShell | `.venv\Scripts\Activate.ps1`    |
-| cmd        | `.venv\Scripts\activate.bat`    |
-
-```bash
-pip install -r requirements.txt
-cp .env.example .env   # then add your QUESTRADE_REFRESH_TOKEN
-```
-
-## Usage
-
-| Command                        | Description                |
-|--------------------------------|----------------------------|
-| `python -m questrade.main`     | Fetch quotes (CLI)         |
-| `python -m questrade --gui`    | Launch GUI window          |
-
-The GUI includes a refresh button and an auto-refresh toggle (10s interval).
+The GUI includes a refresh button and an auto-refresh toggle (10-second interval).
 
 ## Development
 
-```bash
+```cmd
 pytest                   # Run tests
 pytest --cov=src         # Run with coverage
 ruff check src tests     # Lint
 mypy src                 # Type check
 ```
 
-## Authentication
-
-Questrade uses OAuth 2.0 with short-lived access tokens (30 min) and long-lived refresh tokens. Store your initial refresh token in `.env` — the app rotates it automatically after each refresh.
-
-<details>
-<summary>Troubleshooting</summary>
+## Troubleshooting
 
 | Error | Fix |
 |-------|-----|
 | `ModuleNotFoundError: questrade` | Activate the venv, or set `PYTHONPATH=src` |
 | `ValidationError` on bid/ask | Markets are closed — `None` values are expected |
 | `SymbolNotFoundError` for TSX symbols | Use the `.TO` suffix (e.g. `FIE.TO`) |
-
-</details>
 
 ## Resources
 
