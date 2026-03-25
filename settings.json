@@ -1,7 +1,8 @@
 {
-  "window_geometry": "1291x799+313+80",
+  "window_geometry": "1291x799+-1521+123",
   "sort_column": "symbol",
   "sort_descending": false,
   "auto_refresh": false,
-  "refresh_interval": 5
+  "refresh_interval": 5,
+  "alert_threshold": 3.0
 }
