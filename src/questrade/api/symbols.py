@@ -8,9 +8,9 @@ import logging
 
 import httpx
 
-from questrade.models.errors import SymbolNotFoundError
-from questrade.models.symbol import SymbolConfig, SymbolSearchResponse
 from questrade.api.client import safe_get
+from questrade.models.errors import SymbolNotFoundError
+from questrade.models.symbol import SymbolConfig, SymbolSearchResponse, SymbolSearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,20 @@ def resolve_symbol_id(
     _symbol_cache[cache_key] = match.symbol_id
     logger.debug("Resolved %s → symbolId %d", cache_key, match.symbol_id)
     return match.symbol_id
+
+
+def search_symbols(
+    prefix: str,
+    client: httpx.Client,
+) -> list[SymbolSearchResult]:
+    """Search for symbols by prefix.
+
+    Returns raw search results for display in autocomplete UI.
+    """
+    url = f"v1/symbols/search?prefix={prefix}"
+    response = safe_get(client, url)
+    data = SymbolSearchResponse.model_validate(response.json())
+    return data.symbols
 
 
 def resolve_all_symbol_ids(

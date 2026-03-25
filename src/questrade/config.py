@@ -48,7 +48,7 @@ def get_env(key: str) -> str:
     """
     value = os.environ.get(key, "").strip()
     if not value:
-        raise EnvironmentError(
+        raise OSError(
             f"Missing required environment variable: {key}. "
             f"Check your .env file (see .env.example for reference)."
         )
@@ -113,7 +113,7 @@ def load_symbols() -> list[SymbolConfig]:
         EnvironmentError: If symbols.json is missing or malformed.
     """
     if not _SYMBOLS_PATH.exists():
-        raise EnvironmentError(
+        raise OSError(
             f"symbols.json not found at {_SYMBOLS_PATH}. "
             "Create a symbols.json file in the project root — see README."
         )
@@ -121,7 +121,7 @@ def load_symbols() -> list[SymbolConfig]:
         data = json.loads(_SYMBOLS_PATH.read_text(encoding="utf-8"))
         return [SymbolConfig(**entry) for entry in data]
     except (json.JSONDecodeError, TypeError, KeyError) as exc:
-        raise EnvironmentError(f"Invalid symbols.json: {exc}") from exc
+        raise OSError(f"Invalid symbols.json: {exc}") from exc
 
 
 TARGET_SYMBOLS: list[SymbolConfig] = load_symbols()
@@ -139,3 +139,38 @@ def reload_symbols() -> list[SymbolConfig]:
     TARGET_SYMBOLS.clear()
     TARGET_SYMBOLS.extend(fresh)
     return TARGET_SYMBOLS
+
+
+# ---------------------------------------------------------------------------
+# GUI settings persistence
+# ---------------------------------------------------------------------------
+
+_SETTINGS_PATH = Path(__file__).parent.parent.parent / "settings.json"
+
+_DEFAULT_SETTINGS: dict[str, object] = {
+    "window_geometry": "1200x500",
+    "sort_column": "symbol",
+    "sort_descending": False,
+    "auto_refresh": False,
+    "refresh_interval": 10,
+}
+
+
+def load_settings() -> dict[str, object]:
+    """Load GUI settings from settings.json, falling back to defaults."""
+    if not _SETTINGS_PATH.exists():
+        return dict(_DEFAULT_SETTINGS)
+    try:
+        data = json.loads(_SETTINGS_PATH.read_text(encoding="utf-8"))
+        merged = dict(_DEFAULT_SETTINGS)
+        merged.update(data)
+        return merged
+    except (json.JSONDecodeError, TypeError):
+        return dict(_DEFAULT_SETTINGS)
+
+
+def save_settings(settings: dict[str, object]) -> None:
+    """Persist GUI settings to settings.json."""
+    _SETTINGS_PATH.write_text(
+        json.dumps(settings, indent=2) + "\n", encoding="utf-8",
+    )
