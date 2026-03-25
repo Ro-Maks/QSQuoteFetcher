@@ -111,14 +111,6 @@ class QuoteApp(ttk.Window):
         # Detail panel (hidden initially)
         self._detail = DetailPanel(self)
 
-        # Countdown progress bar (hidden initially)
-        self._progress = ttk.Progressbar(
-            self,
-            bootstyle="info",  # type: ignore[arg-type]
-            maximum=self._refresh_interval,
-            mode="determinate",
-        )
-
         # Separator + Status bar
         self._separator = ttk.Separator(self)
         self._separator.pack(fill=X, padx=16, pady=(8, 0))
@@ -145,7 +137,7 @@ class QuoteApp(ttk.Window):
         self._header.set_refresh_enabled(False)
         self._statusbar.set_status("\u27f3 Fetching\u2026", "StatusBar.TLabel")
         self._statusbar.set_countdown("")
-        self._progress.pack_forget()
+        self._statusbar.stop_spinner()
         self._header.set_status_fetching()
         threading.Thread(target=self._fetch_worker, daemon=True).start()
 
@@ -158,12 +150,11 @@ class QuoteApp(ttk.Window):
         else:
             self._cancel_countdown()
             self._statusbar.set_countdown("")
-            self._progress.pack_forget()
+            self._statusbar.stop_spinner()
 
     def set_refresh_interval(self, seconds: int) -> None:
         """Update the refresh interval."""
         self._refresh_interval = seconds
-        self._progress.configure(maximum=seconds)
         if self._auto_refresh_on:
             self._cancel_countdown()
             self._start_countdown()
@@ -214,19 +205,17 @@ class QuoteApp(ttk.Window):
 
     def _start_countdown(self) -> None:
         self._countdown = self._refresh_interval
-        self._progress.configure(value=self._refresh_interval)
-        self._progress.pack(fill=X, padx=16, pady=(4, 0), before=self._separator)
+        self._statusbar.start_spinner()
         self._tick_countdown()
 
     def _tick_countdown(self) -> None:
         if not self._auto_refresh_on:
             return
         if self._countdown <= 0:
-            self._progress.pack_forget()
+            self._statusbar.stop_spinner()
             self.refresh_quotes()
             return
         self._statusbar.set_countdown(f"Next refresh in {self._countdown}s")
-        self._progress.configure(value=self._countdown)
         self._countdown -= 1
         self._countdown_timer_id = self.after(1000, self._tick_countdown)
 

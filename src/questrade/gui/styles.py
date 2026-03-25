@@ -222,9 +222,3 @@ def configure_styles() -> None:
         padding=(14, 8),
     )
 
-    # Progress bar for countdown
-    style.configure(
-        "TProgressbar",
-        troughcolor=CLR_BG_DARK,
-        thickness=3,
-    )
