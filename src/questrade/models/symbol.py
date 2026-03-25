@@ -13,6 +13,8 @@ class SymbolConfig:
     symbol: str
     exchange: str
     name: str
+    alert_above: float | None = None
+    alert_below: float | None = None
 
 
 class SymbolSearchResult(BaseModel):

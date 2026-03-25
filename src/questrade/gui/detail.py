@@ -35,6 +35,7 @@ class DetailPanel(ttk.Frame):
         self._fields: dict[str, ttk.Label | tk.Canvas] = {}
         self._candle_cache: dict[str, list[object]] = {}
         self._current_symbol_id: int | None = None
+        self._current_symbol: str | None = None
         self._current_interval: str = "FiveMinutes"
         self._build()
 
@@ -120,6 +121,48 @@ class DetailPanel(ttk.Frame):
         spark_stats_lbl.pack(side=tk.LEFT)
         self._fields["spark_stats"] = spark_stats_lbl
 
+        # Row 5: Price alerts
+        alert_frame = ttk.Frame(parent, style="Dtl.TFrame")
+        alert_frame.grid(row=5, column=0, columnspan=8, sticky="ew", pady=(8, 0))
+
+        ttk.Label(
+            alert_frame, text="Price Alerts", style="DtlK.TLabel",
+        ).pack(side=tk.LEFT, padx=(0, 12))
+
+        ttk.Label(
+            alert_frame, text="Above $", style="DtlK.TLabel",
+        ).pack(side=tk.LEFT)
+        self._alert_above_var = tk.StringVar()
+        ttk.Entry(
+            alert_frame, textvariable=self._alert_above_var, width=10,
+            font=(FONT_FAMILY, 9),
+        ).pack(side=tk.LEFT, padx=(2, 8))
+
+        ttk.Label(
+            alert_frame, text="Below $", style="DtlK.TLabel",
+        ).pack(side=tk.LEFT)
+        self._alert_below_var = tk.StringVar()
+        ttk.Entry(
+            alert_frame, textvariable=self._alert_below_var, width=10,
+            font=(FONT_FAMILY, 9),
+        ).pack(side=tk.LEFT, padx=(2, 8))
+
+        ttk.Button(
+            alert_frame, text="Set",
+            bootstyle="success-outline",  # type: ignore[arg-type]
+            command=self._on_set_alerts, width=5,
+        ).pack(side=tk.LEFT, padx=(4, 2))
+        ttk.Button(
+            alert_frame, text="Clear",
+            bootstyle="secondary-outline",  # type: ignore[arg-type]
+            command=self._on_clear_alerts, width=5,
+        ).pack(side=tk.LEFT, padx=(2, 4))
+
+        self._alert_status_lbl = ttk.Label(
+            alert_frame, text="", style="DtlK.TLabel",
+        )
+        self._alert_status_lbl.pack(side=tk.LEFT, padx=(8, 0))
+
     def _build_chart(self, parent: ttk.Frame) -> None:
         """Build the candlestick chart tab."""
         # Period selector buttons
@@ -164,6 +207,8 @@ class DetailPanel(ttk.Frame):
         """Populate and display the detail panel for the given quote."""
         cur = quote.last_trade_price
         lo, hi = quote.low_price, quote.high_price
+
+        self._current_symbol = quote.symbol
 
         # Overview header
         self._symbol_lbl.configure(text=f"{quote.symbol}  \u2014  {name}")
@@ -281,11 +326,73 @@ class DetailPanel(ttk.Frame):
                 text="  Sparkline available after 2+ refreshes",
             )
 
+        # Populate alert entries from config
+        from questrade.config import TARGET_SYMBOLS
+
+        cfg = next((s for s in TARGET_SYMBOLS if s.symbol == quote.symbol), None)
+        self._alert_above_var.set(
+            f"{cfg.alert_above:.2f}" if cfg and cfg.alert_above is not None else "",
+        )
+        self._alert_below_var.set(
+            f"{cfg.alert_below:.2f}" if cfg and cfg.alert_below is not None else "",
+        )
+        self._alert_status_lbl.configure(text="")
+
         self.pack(fill=X, after=after_widget)
 
     def hide(self) -> None:
         """Hide the detail panel."""
         self.pack_forget()
+
+    # -- Alerts --
+
+    def _on_set_alerts(self) -> None:
+        """Save per-symbol alert thresholds."""
+        if self._current_symbol is None:
+            return
+        from questrade.config import TARGET_SYMBOLS, save_symbols
+
+        cfg = next(
+            (s for s in TARGET_SYMBOLS if s.symbol == self._current_symbol), None,
+        )
+        if cfg is None:
+            return
+
+        above_str = self._alert_above_var.get().strip()
+        below_str = self._alert_below_var.get().strip()
+
+        try:
+            cfg.alert_above = float(above_str) if above_str else None
+        except ValueError:
+            self._alert_status_lbl.configure(text="Invalid 'Above' value")
+            return
+        try:
+            cfg.alert_below = float(below_str) if below_str else None
+        except ValueError:
+            self._alert_status_lbl.configure(text="Invalid 'Below' value")
+            return
+
+        save_symbols(TARGET_SYMBOLS)
+        self._alert_status_lbl.configure(text="\u2713 Saved")
+
+    def _on_clear_alerts(self) -> None:
+        """Remove per-symbol alert thresholds."""
+        if self._current_symbol is None:
+            return
+        from questrade.config import TARGET_SYMBOLS, save_symbols
+
+        cfg = next(
+            (s for s in TARGET_SYMBOLS if s.symbol == self._current_symbol), None,
+        )
+        if cfg is None:
+            return
+
+        cfg.alert_above = None
+        cfg.alert_below = None
+        self._alert_above_var.set("")
+        self._alert_below_var.set("")
+        save_symbols(TARGET_SYMBOLS)
+        self._alert_status_lbl.configure(text="\u2713 Cleared")
 
     # -- Chart --
 

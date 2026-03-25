@@ -129,7 +129,16 @@ TARGET_SYMBOLS: list[SymbolConfig] = load_symbols()
 
 def save_symbols(symbols: list[SymbolConfig]) -> None:
     """Persist the symbol list to symbols.json."""
-    data = [{"symbol": s.symbol, "exchange": s.exchange, "name": s.name} for s in symbols]
+    data: list[dict[str, object]] = []
+    for s in symbols:
+        entry: dict[str, object] = {
+            "symbol": s.symbol, "exchange": s.exchange, "name": s.name,
+        }
+        if s.alert_above is not None:
+            entry["alert_above"] = s.alert_above
+        if s.alert_below is not None:
+            entry["alert_below"] = s.alert_below
+        data.append(entry)
     _SYMBOLS_PATH.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
