@@ -82,8 +82,14 @@ class QuoteApp(ttk.Window):
         if self._settings.get("auto_refresh", False):
             self.toggle_auto_refresh()
 
+        # Alert threshold
+        self._alert_threshold: float = float(
+            self._settings.get("alert_threshold", 3.0),
+        )
+        self._header.set_alert_threshold_display(self._alert_threshold)
+
         # System tray
-        self._tray = SystemTray(self)
+        self._tray = SystemTray(self, alert_threshold=self._alert_threshold)
         self._tray.start()
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -161,6 +167,11 @@ class QuoteApp(ttk.Window):
         if self._auto_refresh_on:
             self._cancel_countdown()
             self._start_countdown()
+
+    def set_alert_threshold(self, value: float) -> None:
+        """Update the alert threshold for big-move notifications."""
+        self._alert_threshold = value
+        self._tray.alert_threshold = value
 
     def open_symbol_manager(self) -> None:
         """Open the symbol management dialog."""
@@ -324,6 +335,7 @@ class QuoteApp(ttk.Window):
             "sort_descending": self._sort_descending,
             "auto_refresh": self._auto_refresh_on,
             "refresh_interval": self._refresh_interval,
+            "alert_threshold": self._alert_threshold,
         })
         save_settings(self._settings)
         self.destroy()

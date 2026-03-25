@@ -57,12 +57,12 @@ def get_change_value(quote: Quote) -> float | None:
 
 
 def fmt_status(quote: Quote) -> str:
-    """Format the real-time/delayed/halted status string."""
+    """Format the real-time/delayed/halted status string with icons."""
     if quote.is_halted:
-        return "HALTED"
+        return "\u26d4 HALTED"
     if quote.delay > 0:
-        return f"Delayed {quote.delay}m"
-    return "Real-Time"
+        return f"\u23f3 Delayed {quote.delay}m"
+    return "\u26a1 Real-Time"
 
 
 def fmt_sparkline(history: list[float]) -> str:

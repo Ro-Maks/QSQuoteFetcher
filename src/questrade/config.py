@@ -153,6 +153,7 @@ _DEFAULT_SETTINGS: dict[str, object] = {
     "sort_descending": False,
     "auto_refresh": False,
     "refresh_interval": 10,
+    "alert_threshold": 3.0,
 }
 
 

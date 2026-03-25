@@ -10,8 +10,7 @@ from PIL import Image, ImageDraw
 if TYPE_CHECKING:
     from questrade.gui.app import QuoteApp
 
-# Notification threshold: alert when a stock moves more than this % from open
-_BIG_MOVE_THRESHOLD = 3.0
+_DEFAULT_ALERT_THRESHOLD = 3.0
 
 
 def _create_tray_icon() -> Image.Image:
@@ -26,10 +25,11 @@ def _create_tray_icon() -> Image.Image:
 class SystemTray:
     """Manages the system tray icon and notifications."""
 
-    def __init__(self, app: QuoteApp) -> None:
+    def __init__(self, app: QuoteApp, alert_threshold: float = _DEFAULT_ALERT_THRESHOLD) -> None:
         self._app = app
         self._icon: object = None
         self._prev_prices: dict[str, float] = {}
+        self.alert_threshold = alert_threshold
 
     def start(self) -> None:
         """Start the system tray icon in a background thread."""
@@ -69,8 +69,8 @@ class SystemTray:
                 (q.last_trade_price - q.open_price) / q.open_price * 100,
             )
             prev_pct = self._prev_prices.get(q.symbol)
-            if pct >= _BIG_MOVE_THRESHOLD and (
-                prev_pct is None or prev_pct < _BIG_MOVE_THRESHOLD
+            if pct >= self.alert_threshold and (
+                prev_pct is None or prev_pct < self.alert_threshold
             ):
                 direction = "up" if q.last_trade_price > q.open_price else "down"
                 self._notify(

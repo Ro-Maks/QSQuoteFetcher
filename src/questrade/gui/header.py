@@ -140,8 +140,38 @@ class HeaderFrame(ttk.Frame):
         self._interval_combo.pack(side=LEFT)
         self._interval_combo.bind("<<ComboboxSelected>>", self._on_interval_change)
 
+        # Alert threshold selector
+        alert_frame = ttk.Frame(btn_area, style="Header.TFrame")
+        alert_frame.pack(side=RIGHT, padx=(0, 12))
+
+        ttk.Label(alert_frame, text="Alert %:", style="Intervallbl.TLabel").pack(
+            side=LEFT, padx=(0, 4),
+        )
+        self._alert_var = tk.StringVar(value="3.0")
+        self._alert_spin = ttk.Spinbox(
+            alert_frame,
+            from_=1.0,
+            to=10.0,
+            increment=0.5,
+            textvariable=self._alert_var,
+            width=4,
+            command=self._on_alert_change,
+        )
+        self._alert_spin.pack(side=LEFT)
+        self._alert_spin.bind("<Return>", lambda _e: self._on_alert_change())
+
     def _on_interval_change(self, _event: tk.Event) -> None:  # type: ignore[type-arg]
         self._app.set_refresh_interval(int(self._interval_var.get().rstrip("s")))
+        self.focus_set()
+
+    def _on_alert_change(self) -> None:
+        try:
+            val = float(self._alert_var.get())
+            val = max(1.0, min(10.0, val))
+        except ValueError:
+            val = 3.0
+        self._alert_var.set(str(val))
+        self._app.set_alert_threshold(val)
         self.focus_set()
 
     # -- Public interface --
@@ -205,6 +235,10 @@ class HeaderFrame(ttk.Frame):
         text, style = _get_market_status()
         self._market_status_label.configure(text=text, style=style)
         self.after(60_000, self.update_market_status)
+
+    def set_alert_threshold_display(self, value: float) -> None:
+        """Set the alert threshold spinner value."""
+        self._alert_var.set(str(value))
 
     def set_market_info(self, info: str) -> None:
         """Display additional market info from the API."""

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
+from tkinter import messagebox
 from typing import TYPE_CHECKING
 
 import ttkbootstrap as ttk
@@ -68,6 +69,15 @@ def open_symbol_manager(app: QuoteApp) -> None:
     canvas.pack(side=LEFT, fill=BOTH, expand=True)
 
     current_symbols: list[SymbolConfig] = list(TARGET_SYMBOLS)
+    original_symbols: list[SymbolConfig] = list(TARGET_SYMBOLS)
+
+    def _has_changes() -> bool:
+        if len(current_symbols) != len(original_symbols):
+            return True
+        return any(
+            a.symbol != b.symbol or a.exchange != b.exchange or a.name != b.name
+            for a, b in zip(current_symbols, original_symbols, strict=True)
+        )
 
     def _rebuild_list() -> None:
         for w in inner.winfo_children():
@@ -106,6 +116,23 @@ def open_symbol_manager(app: QuoteApp) -> None:
         app.on_symbols_saved(current_symbols)
         dlg.destroy()
 
+    def _on_close() -> None:
+        if not _has_changes():
+            dlg.destroy()
+            return
+        result = messagebox.askyesnocancel(
+            "Unsaved Changes",
+            "You have unsaved changes. Save before closing?",
+            parent=dlg,
+        )
+        if result is True:
+            _save()
+        elif result is False:
+            dlg.destroy()
+        # result is None → Cancel, do nothing
+
+    dlg.protocol("WM_DELETE_WINDOW", _on_close)
+
     ttk.Button(
         btn_row, text="Save", bootstyle="success",  # type: ignore[arg-type]
         command=_save,
@@ -113,7 +140,7 @@ def open_symbol_manager(app: QuoteApp) -> None:
     ttk.Button(
         btn_row, text="Cancel",
         bootstyle="secondary-outline",  # type: ignore[arg-type]
-        command=dlg.destroy,
+        command=_on_close,
     ).pack(side=RIGHT)
 
     # --- Add symbol area with autocomplete ---
